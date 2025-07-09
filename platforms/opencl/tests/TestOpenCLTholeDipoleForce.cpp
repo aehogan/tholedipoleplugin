@@ -30,10 +30,10 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * This tests the Reference implementation of ExampleForce.
+ * This tests the Reference implementation of TholeDipoleForce.
  */
 
-#include "ExampleForce.h"
+#include "TholeDipoleForce.h"
 #include "openmm/internal/AssertionUtilities.h"
 #include "openmm/Context.h"
 #include "openmm/Platform.h"
@@ -43,11 +43,11 @@
 #include <iostream>
 #include <vector>
 
-using namespace ExamplePlugin;
+using namespace TholeDipolePlugin;
 using namespace OpenMM;
 using namespace std;
 
-extern "C" OPENMM_EXPORT void registerExampleReferenceKernelFactories();
+extern "C" OPENMM_EXPORT void registerTholeDipoleOpenCLKernelFactories();
 
 void testForce() {
     // Create a chain of particles connected by bonds.
@@ -60,7 +60,7 @@ void testForce() {
         system.addParticle(1.0);
         positions[i] = Vec3(i, 0.1*i, -0.3*i);
     }
-    ExampleForce* force = new ExampleForce();
+    TholeDipoleForce* force = new TholeDipoleForce();
     system.addForce(force);
     for (int i = 0; i < numBonds; i++)
         force->addBond(i, i+1, 1.0+sin(0.8*i), cos(0.3*i));
@@ -68,7 +68,7 @@ void testForce() {
     // Compute the forces and energy.
 
     VerletIntegrator integ(1.0);
-    Platform& platform = Platform::getPlatformByName("Reference");
+    Platform& platform = Platform::getPlatformByName("OpenCL");
     Context context(system, integ, platform);
     context.setPositions(positions);
     State state = context.getState(State::Energy | State::Forces);
@@ -104,14 +104,14 @@ void testForce() {
 void testChangingParameters() {
     const double k = 1.5;
     const double length = 0.5;
-    Platform& platform = Platform::getPlatformByName("Reference");
+    Platform& platform = Platform::getPlatformByName("OpenCL");
     
     // Create a system with one bond.
     
     System system;
     system.addParticle(1.0);
     system.addParticle(1.0);
-    ExampleForce* force = new ExampleForce();
+    TholeDipoleForce* force = new TholeDipoleForce();
     force->addBond(0, 1, length, k);
     system.addForce(force);
     vector<Vec3> positions(2);
@@ -136,9 +136,11 @@ void testChangingParameters() {
     ASSERT_EQUAL_TOL(k2*pow(1.0-length2, 4), state.getPotentialEnergy(), 1e-5);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
-        registerExampleReferenceKernelFactories();
+        registerTholeDipoleOpenCLKernelFactories();
+        if (argc > 1)
+            Platform::getPlatformByName("OpenCL").setPropertyDefaultValue("OpenCLPrecision", string(argv[1]));
         testForce();
         testChangingParameters();
     }

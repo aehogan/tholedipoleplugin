@@ -1,8 +1,5 @@
-#ifndef OPENMM_OPENCLEXAMPLEKERNELFACTORY_H_
-#define OPENMM_OPENCLEXAMPLEKERNELFACTORY_H_
-
 /* -------------------------------------------------------------------------- *
- *                                   OpenMM                                   *
+ *                           OpenMMTholeDipole                                   *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
@@ -32,19 +29,35 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "openmm/KernelFactory.h"
+#include "ReferenceTholeDipoleKernelFactory.h"
+#include "ReferenceTholeDipoleKernels.h"
+#include "openmm/reference/ReferencePlatform.h"
+#include "openmm/internal/ContextImpl.h"
+#include "openmm/OpenMMException.h"
 
-namespace ExamplePlugin {
+using namespace TholeDipolePlugin;
+using namespace OpenMM;
 
-/**
- * This KernelFactory creates kernels for the OpenCL implementation of the Example plugin.
- */
+extern "C" OPENMM_EXPORT void registerPlatforms() {
+}
 
-class OpenCLExampleKernelFactory : public OpenMM::KernelFactory {
-public:
-    OpenMM::KernelImpl* createKernelImpl(std::string name, const OpenMM::Platform& platform, OpenMM::ContextImpl& context) const;
-};
+extern "C" OPENMM_EXPORT void registerKernelFactories() {
+    for (int i = 0; i < Platform::getNumPlatforms(); i++) {
+        Platform& platform = Platform::getPlatform(i);
+        if (dynamic_cast<ReferencePlatform*>(&platform) != NULL) {
+            ReferenceTholeDipoleKernelFactory* factory = new ReferenceTholeDipoleKernelFactory();
+            platform.registerKernelFactory(CalcTholeDipoleForceKernel::Name(), factory);
+        }
+    }
+}
 
-} // namespace ExamplePlugin
+extern "C" OPENMM_EXPORT void registerTholeDipoleReferenceKernelFactories() {
+    registerKernelFactories();
+}
 
-#endif /*OPENMM_OPENCLEXAMPLEKERNELFACTORY_H_*/
+KernelImpl* ReferenceTholeDipoleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
+    ReferencePlatform::PlatformData& data = *static_cast<ReferencePlatform::PlatformData*>(context.getPlatformData());
+    if (name == CalcTholeDipoleForceKernel::Name())
+        return new ReferenceCalcTholeDipoleForceKernel(name, platform);
+    throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '")+name+"'").c_str());
+}

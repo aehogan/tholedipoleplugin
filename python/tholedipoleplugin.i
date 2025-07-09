@@ -1,4 +1,4 @@
-%module exampleplugin
+%module tholedipoleplugin
 
 %import(module="simtk.openmm") "swig/OpenMMSwigHeaders.i"
 %include "swig/typemaps.i"
@@ -16,7 +16,7 @@ namespace std {
 };
 
 %{
-#include "ExampleForce.h"
+#include "TholeDipoleForce.h"
 #include "OpenMM.h"
 #include "OpenMMAmoeba.h"
 #include "OpenMMDrude.h"
@@ -32,7 +32,7 @@ import simtk.unit as unit
 /*
  * Add units to function outputs.
 */
-%pythonappend ExamplePlugin::ExampleForce::getBondParameters(int index, int& particle1, int& particle2,
+%pythonappend TholeDipolePlugin::TholeDipoleForce::getBondParameters(int index, int& particle1, int& particle2,
                                                              double& length, double& k) const %{
     val[2] = unit.Quantity(val[2], unit.nanometer)
     val[3] = unit.Quantity(val[3], unit.kilojoule_per_mole/unit.nanometer**4)
@@ -51,11 +51,11 @@ import simtk.unit as unit
 }
 
 
-namespace ExamplePlugin {
+namespace TholeDipolePlugin {
 
-class ExampleForce : public OpenMM::Force {
+class TholeDipoleForce : public OpenMM::Force {
 public:
-    ExampleForce();
+    TholeDipoleForce();
 
     int getNumBonds() const;
 
@@ -80,15 +80,15 @@ public:
     %clear double& k;
 
     /*
-     * Add methods for casting a Force to an ExampleForce.
+     * Add methods for casting a Force to a TholeDipoleForce.
     */
     %extend {
-        static ExamplePlugin::ExampleForce& cast(OpenMM::Force& force) {
-            return dynamic_cast<ExamplePlugin::ExampleForce&>(force);
+        static TholeDipolePlugin::TholeDipoleForce& cast(OpenMM::Force& force) {
+            return dynamic_cast<TholeDipolePlugin::TholeDipoleForce&>(force);
         }
 
         static bool isinstance(OpenMM::Force& force) {
-            return (dynamic_cast<ExamplePlugin::ExampleForce*>(&force) != NULL);
+            return (dynamic_cast<TholeDipolePlugin::TholeDipoleForce*>(&force) != NULL);
         }
     }
 };

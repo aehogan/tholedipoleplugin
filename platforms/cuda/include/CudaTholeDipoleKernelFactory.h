@@ -1,8 +1,8 @@
-#ifndef OPENMM_EXAMPLE_FORCE_PROXY_H_
-#define OPENMM_EXAMPLE_FORCE_PROXY_H_
+#ifndef OPENMM_CUDATHOLEDIPOLE_KERNELFACTORY_H_
+#define OPENMM_CUDATHOLEDIPOLE_KERNELFACTORY_H_
 
 /* -------------------------------------------------------------------------- *
- *                                OpenMMExample                                 *
+ *                                   OpenMM                                   *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
@@ -32,22 +32,19 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "internal/windowsExportExample.h"
-#include "openmm/serialization/SerializationProxy.h"
+#include "openmm/KernelFactory.h"
 
 namespace OpenMM {
 
 /**
- * This is a proxy for serializing ExampleForce objects.
+ * This KernelFactory creates kernels for the CUDA implementation of the TholeDipole plugin.
  */
 
-class OPENMM_EXPORT_EXAMPLE ExampleForceProxy : public SerializationProxy {
+class CudaTholeDipoleKernelFactory : public KernelFactory {
 public:
-    ExampleForceProxy();
-    void serialize(const void* object, SerializationNode& node) const;
-    void* deserialize(const SerializationNode& node) const;
+    KernelImpl* createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const;
 };
 
 } // namespace OpenMM
 
-#endif /*OPENMM_EXAMPLE_FORCE_PROXY_H_*/
+#endif /*OPENMM_CUDATHOLEDIPOLE_KERNELFACTORY_H_*/

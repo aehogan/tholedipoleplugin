@@ -1,15 +1,12 @@
-#ifndef COMMON_EXAMPLE_KERNELS_H_
-#define COMMON_EXAMPLE_KERNELS_H_
-
 /* -------------------------------------------------------------------------- *
- *                                   OpenMM                                   *
+ *                             OpenMMTholeDipole                                 *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2014-2021 Stanford University and the Authors.      *
+ * Portions copyright (c) 2014 Stanford University and the Authors.           *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -32,51 +29,44 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "ExampleKernels.h"
-#include "openmm/common/ComputeContext.h"
-#include "openmm/common/ComputeArray.h"
+#include "TholeDipoleForceProxy.h"
+#include "TholeDipoleForce.h"
+#include "openmm/serialization/SerializationNode.h"
+#include <sstream>
 
-namespace ExamplePlugin {
+using namespace TholeDipolePlugin;
+using namespace OpenMM;
+using namespace std;
 
-/**
- * This kernel is invoked by ExampleForce to calculate the forces acting on the system and the energy of the system.
- */
-class CommonCalcExampleForceKernel : public CalcExampleForceKernel {
-public:
-    CommonCalcExampleForceKernel(std::string name, const OpenMM::Platform& platform, OpenMM::ComputeContext& cc, const OpenMM::System& system) :
-            CalcExampleForceKernel(name, platform), hasInitializedKernel(false), cc(cc), system(system) {
+TholeDipoleForceProxy::TholeDipoleForceProxy() : SerializationProxy("TholeDipoleForce") {
+}
+
+void TholeDipoleForceProxy::serialize(const void* object, SerializationNode& node) const {
+    node.setIntProperty("version", 1);
+    const TholeDipoleForce& force = *reinterpret_cast<const TholeDipoleForce*>(object);
+    SerializationNode& bonds = node.createChildNode("Bonds");
+    for (int i = 0; i < force.getNumBonds(); i++) {
+        int particle1, particle2;
+        double distance, k;
+        force.getBondParameters(i, particle1, particle2, distance, k);
+        bonds.createChildNode("Bond").setIntProperty("p1", particle1).setIntProperty("p2", particle2).setDoubleProperty("d", distance).setDoubleProperty("k", k);
     }
-    /**
-     * Initialize the kernel.
-     * 
-     * @param system     the System this kernel will be applied to
-     * @param force      the ExampleForce this kernel will be used for
-     */
-    void initialize(const OpenMM::System& system, const ExampleForce& force);
-    /**
-     * Execute the kernel to calculate the forces and/or energy.
-     *
-     * @param context        the context in which to execute this kernel
-     * @param includeForces  true if forces should be calculated
-     * @param includeEnergy  true if the energy should be calculated
-     * @return the potential energy due to the force
-     */
-    double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
-    /**
-     * Copy changed parameters over to a context.
-     *
-     * @param context    the context to copy parameters to
-     * @param force      the ExampleForce to copy the parameters from
-     */
-    void copyParametersToContext(OpenMM::ContextImpl& context, const ExampleForce& force);
-private:
-    int numBonds;
-    bool hasInitializedKernel;
-    OpenMM::ComputeContext& cc;
-    const OpenMM::System& system;
-    OpenMM::ComputeArray params;
-};
+}
 
-} // namespace ExamplePlugin
-
-#endif /*COMMON_EXAMPLE_KERNELS_H_*/
+void* TholeDipoleForceProxy::deserialize(const SerializationNode& node) const {
+    if (node.getIntProperty("version") != 1)
+        throw OpenMMException("Unsupported version number");
+    TholeDipoleForce* force = new TholeDipoleForce();
+    try {
+        const SerializationNode& bonds = node.getChildNode("Bonds");
+        for (int i = 0; i < (int) bonds.getChildren().size(); i++) {
+            const SerializationNode& bond = bonds.getChildren()[i];
+            force->addBond(bond.getIntProperty("p1"), bond.getIntProperty("p2"), bond.getDoubleProperty("d"), bond.getDoubleProperty("k"));
+        }
+    }
+    catch (...) {
+        delete force;
+        throw;
+    }
+    return force;
+}

@@ -29,20 +29,20 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "CommonExampleKernels.h"
-#include "CommonExampleKernelSources.h"
+#include "CommonTholeDipoleKernels.h"
+#include "CommonTholeDipoleKernelSources.h"
 #include "openmm/common/BondedUtilities.h"
 #include "openmm/common/ComputeForceInfo.h"
 #include "openmm/common/ContextSelector.h"
 #include "openmm/internal/ContextImpl.h"
 
-using namespace ExamplePlugin;
+using namespace TholeDipolePlugin;
 using namespace OpenMM;
 using namespace std;
 
-class CommonExampleForceInfo : public ComputeForceInfo {
+class CommonTholeDipoleForceInfo : public ComputeForceInfo {
 public:
-    CommonExampleForceInfo(const ExampleForce& force) : force(force) {
+    CommonTholeDipoleForceInfo(const TholeDipoleForce& force) : force(force) {
     }
     int getNumParticleGroups() {
         return force.getNumBonds();
@@ -63,10 +63,10 @@ public:
         return (length1 == length2 && k1 == k2);
     }
 private:
-    const ExampleForce& force;
+    const TholeDipoleForce& force;
 };
 
-void CommonCalcExampleForceKernel::initialize(const System& system, const ExampleForce& force) {
+void CommonCalcTholeDipoleForceKernel::initialize(const System& system, const TholeDipoleForce& force) {
     ContextSelector selector(cc);
     int numContexts = cc.getNumContexts();
     int startIndex = cc.getContextIndex()*force.getNumBonds()/numContexts;
@@ -85,15 +85,15 @@ void CommonCalcExampleForceKernel::initialize(const System& system, const Exampl
     params.upload(paramVector);
     map<string, string> replacements;
     replacements["PARAMS"] = cc.getBondedUtilities().addArgument(params, "float2");
-    cc.getBondedUtilities().addInteraction(atoms, cc.replaceStrings(CommonExampleKernelSources::exampleForce, replacements), force.getForceGroup());
-    cc.addForce(new CommonExampleForceInfo(force));
+    cc.getBondedUtilities().addInteraction(atoms, cc.replaceStrings(CommonTholeDipoleKernelSources::tholeDipoleForce, replacements), force.getForceGroup());
+    cc.addForce(new CommonTholeDipoleForceInfo(force));
 }
 
-double CommonCalcExampleForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy) {
+double CommonCalcTholeDipoleForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy) {
     return 0.0;
 }
 
-void CommonCalcExampleForceKernel::copyParametersToContext(ContextImpl& context, const ExampleForce& force) {
+void CommonCalcTholeDipoleForceKernel::copyParametersToContext(ContextImpl& context, const TholeDipoleForce& force) {
     ContextSelector selector(cc);
     int numContexts = cc.getNumContexts();
     int startIndex = cc.getContextIndex()*force.getNumBonds()/numContexts;

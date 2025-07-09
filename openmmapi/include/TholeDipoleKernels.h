@@ -1,3 +1,6 @@
+#ifndef THOLEDIPOLE_KERNELS_H_
+#define THOLEDIPOLE_KERNELS_H_
+
 /* -------------------------------------------------------------------------- *
  *                                   OpenMM                                   *
  * -------------------------------------------------------------------------- *
@@ -29,55 +32,49 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#ifdef WIN32
-  #define _USE_MATH_DEFINES // Needed to get M_PI
-#endif
-#include "internal/ExampleForceImpl.h"
-#include "ExampleKernels.h"
-#include "openmm/OpenMMException.h"
-#include "openmm/internal/ContextImpl.h"
-#include <cmath>
-#include <map>
-#include <set>
-#include <sstream>
+#include "TholeDipoleForce.h"
+#include "openmm/KernelImpl.h"
+#include "openmm/Platform.h"
+#include "openmm/System.h"
+#include <string>
 
-using namespace ExamplePlugin;
-using namespace OpenMM;
-using namespace std;
+namespace TholeDipolePlugin {
 
-ExampleForceImpl::ExampleForceImpl(const ExampleForce& owner) : owner(owner) {
-}
-
-ExampleForceImpl::~ExampleForceImpl() {
-}
-
-void ExampleForceImpl::initialize(ContextImpl& context) {
-    kernel = context.getPlatform().createKernel(CalcExampleForceKernel::Name(), context);
-    kernel.getAs<CalcExampleForceKernel>().initialize(context.getSystem(), owner);
-}
-
-double ExampleForceImpl::calcForcesAndEnergy(ContextImpl& context, bool includeForces, bool includeEnergy, int groups) {
-    if ((groups&(1<<owner.getForceGroup())) != 0)
-        return kernel.getAs<CalcExampleForceKernel>().execute(context, includeForces, includeEnergy);
-    return 0.0;
-}
-
-std::vector<std::string> ExampleForceImpl::getKernelNames() {
-    std::vector<std::string> names;
-    names.push_back(CalcExampleForceKernel::Name());
-    return names;
-}
-
-vector<pair<int, int> > ExampleForceImpl::getBondedParticles() const {
-    int numBonds = owner.getNumBonds();
-    vector<pair<int, int> > bonds(numBonds);
-    for (int i = 0; i < numBonds; i++) {
-        double length, k;
-        owner.getBondParameters(i, bonds[i].first, bonds[i].second, length, k);
+/**
+ * This kernel is invoked by TholeDipoleForce to calculate the forces acting on the system and the energy of the system.
+ */
+class CalcTholeDipoleForceKernel : public OpenMM::KernelImpl {
+public:
+    static std::string Name() {
+        return "CalcTholeDipoleForce";
     }
-    return bonds;
-}
+    CalcTholeDipoleForceKernel(std::string name, const OpenMM::Platform& platform) : OpenMM::KernelImpl(name, platform) {
+    }
+    /**
+     * Initialize the kernel.
+     * 
+     * @param system     the System this kernel will be applied to
+     * @param force      the TholeDipoleForce this kernel will be used for
+     */
+    virtual void initialize(const OpenMM::System& system, const TholeDipoleForce& force) = 0;
+    /**
+     * Execute the kernel to calculate the forces and/or energy.
+     *
+     * @param context        the context in which to execute this kernel
+     * @param includeForces  true if forces should be calculated
+     * @param includeEnergy  true if the energy should be calculated
+     * @return the potential energy due to the force
+     */
+    virtual double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy) = 0;
+    /**
+     * Copy changed parameters over to a context.
+     *
+     * @param context    the context to copy parameters to
+     * @param force      the TholeDipoleForce to copy the parameters from
+     */
+    virtual void copyParametersToContext(OpenMM::ContextImpl& context, const TholeDipoleForce& force) = 0;
+};
 
-void ExampleForceImpl::updateParametersInContext(ContextImpl& context) {
-    kernel.getAs<CalcExampleForceKernel>().copyParametersToContext(context, owner);
-}
+} // namespace TholeDipolePlugin
+
+#endif /*THOLEDIPOLE_KERNELS_H_*/

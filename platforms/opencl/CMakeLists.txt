@@ -1,13 +1,13 @@
 #---------------------------------------------------
-# OpenMM Example Plugin OpenCL Platform
+# OpenMM TholeDipole Plugin OpenCL Platform
 #----------------------------------------------------
 
 # Collect up information about the version of the OpenMM library we're building
 # and make it available to the code so it can be built into the binaries.
 
-SET(OPENMMEXAMPLEOPENCL_LIBRARY_NAME ExamplePluginOpenCL)
+SET(OPENMMTHOLEDIPOLE_OPENCL_LIBRARY_NAME TholeDipolePluginOpenCL)
 
-SET(SHARED_TARGET ${OPENMMEXAMPLEOPENCL_LIBRARY_NAME})
+SET(SHARED_TARGET ${OPENMMTHOLEDIPOLE_OPENCL_LIBRARY_NAME})
 
 # These are all the places to search for header files which are
 # to be part of the API.
@@ -32,7 +32,7 @@ FOREACH(subdir ${OPENMM_SOURCE_SUBDIRS})
     SET(SOURCE_INCLUDE_FILES ${SOURCE_INCLUDE_FILES} ${incl_files})
 ENDFOREACH(subdir)
 
-SET(COMMON_KERNELS_CPP ${CMAKE_CURRENT_BINARY_DIR}/../common/src/CommonExampleKernelSources.cpp)
+SET(COMMON_KERNELS_CPP ${CMAKE_CURRENT_BINARY_DIR}/../common/src/CommonTholeDipoleKernelSources.cpp)
 SET(SOURCE_FILES ${SOURCE_FILES} ${COMMON_KERNELS_CPP})
 
 INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -55,7 +55,7 @@ ADD_DEPENDENCIES(${SHARED_TARGET} CommonKernels)
 TARGET_LINK_LIBRARIES(${SHARED_TARGET} ${OPENCL_LIBRARIES})
 TARGET_LINK_LIBRARIES(${SHARED_TARGET} OpenMM)
 TARGET_LINK_LIBRARIES(${SHARED_TARGET} OpenMMOpenCL)
-TARGET_LINK_LIBRARIES(${SHARED_TARGET} ${SHARED_EXAMPLE_TARGET})
+TARGET_LINK_LIBRARIES(${SHARED_TARGET} ${SHARED_THOLEDIPOLE_TARGET})
 SET_TARGET_PROPERTIES(${SHARED_TARGET} PROPERTIES
     COMPILE_FLAGS "-DOPENMM_BUILDING_SHARED_LIBRARY ${EXTRA_COMPILE_FLAGS}"
     LINK_FLAGS "${EXTRA_COMPILE_FLAGS}")

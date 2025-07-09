@@ -1,5 +1,8 @@
+#ifndef OPENMM_THOLEDIPOLEFORCEIMPL_H_
+#define OPENMM_THOLEDIPOLEFORCEIMPL_H_
+
 /* -------------------------------------------------------------------------- *
- *                              OpenMMExample                                   *
+ *                                   OpenMM                                   *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
@@ -29,45 +32,44 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include <exception>
+#include "TholeDipoleForce.h"
+#include "openmm/internal/ForceImpl.h"
+#include "openmm/Kernel.h"
+#include <utility>
+#include <set>
+#include <string>
 
-#include "OpenCLExampleKernelFactory.h"
-#include "CommonExampleKernels.h"
-#include "openmm/opencl/OpenCLContext.h"
-#include "openmm/internal/windowsExport.h"
-#include "openmm/internal/ContextImpl.h"
-#include "openmm/OpenMMException.h"
+namespace TholeDipolePlugin {
 
-using namespace ExamplePlugin;
-using namespace OpenMM;
+class System;
 
-extern "C" OPENMM_EXPORT void registerPlatforms() {
-}
+/**
+ * This is the internal implementation of TholeDipoleForce.
+ */
 
-extern "C" OPENMM_EXPORT void registerKernelFactories() {
-    try {
-        Platform& platform = Platform::getPlatformByName("OpenCL");
-        OpenCLExampleKernelFactory* factory = new OpenCLExampleKernelFactory();
-        platform.registerKernelFactory(CalcExampleForceKernel::Name(), factory);
+class OPENMM_EXPORT_THOLEDIPOLE TholeDipoleForceImpl : public OpenMM::ForceImpl {
+public:
+    TholeDipoleForceImpl(const TholeDipoleForce& owner);
+    ~TholeDipoleForceImpl();
+    void initialize(OpenMM::ContextImpl& context);
+    const TholeDipoleForce& getOwner() const {
+        return owner;
     }
-    catch (std::exception ex) {
-        // Ignore
+    void updateContextState(OpenMM::ContextImpl& context, bool& forcesInvalid) {
+        // This force field doesn't update the state directly.
     }
-}
+    double calcForcesAndEnergy(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy, int groups);
+    std::map<std::string, double> getDefaultParameters() {
+        return std::map<std::string, double>(); // This force field doesn't define any parameters.
+    }
+    std::vector<std::string> getKernelNames();
+    std::vector<std::pair<int, int> > getBondedParticles() const;
+    void updateParametersInContext(OpenMM::ContextImpl& context);
+private:
+    const TholeDipoleForce& owner;
+    OpenMM::Kernel kernel;
+};
 
-extern "C" OPENMM_EXPORT void registerExampleOpenCLKernelFactories() {
-    try {
-        Platform::getPlatformByName("OpenCL");
-    }
-    catch (...) {
-        Platform::registerPlatform(new OpenCLPlatform());
-    }
-    registerKernelFactories();
-}
+} // namespace TholeDipolePlugin
 
-KernelImpl* OpenCLExampleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
-    OpenCLContext& cl = *static_cast<OpenCLPlatform::PlatformData*>(context.getPlatformData())->contexts[0];
-    if (name == CalcExampleForceKernel::Name())
-        return new CommonCalcExampleForceKernel(name, platform, cl, context.getSystem());
-    throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '")+name+"'").c_str());
-}
+#endif /*OPENMM_THOLEDIPOLEFORCEIMPL_H_*/

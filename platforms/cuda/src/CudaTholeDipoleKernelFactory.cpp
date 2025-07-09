@@ -1,8 +1,5 @@
-#ifndef OPENMM_CUDAEXAMPLEKERNELFACTORY_H_
-#define OPENMM_CUDAEXAMPLEKERNELFACTORY_H_
-
 /* -------------------------------------------------------------------------- *
- *                                   OpenMM                                   *
+ *                           OpenMMTholeDipole                                   *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
@@ -32,19 +29,45 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "openmm/KernelFactory.h"
+#include <exception>
 
-namespace OpenMM {
+#include "CudaTholeDipoleKernelFactory.h"
+#include "CommonTholeDipoleKernels.h"
+#include "openmm/cuda/CudaContext.h"
+#include "openmm/internal/windowsExport.h"
+#include "openmm/internal/ContextImpl.h"
+#include "openmm/OpenMMException.h"
 
-/**
- * This KernelFactory creates kernels for the CUDA implementation of the Example plugin.
- */
+using namespace TholeDipolePlugin;
+using namespace OpenMM;
 
-class CudaExampleKernelFactory : public KernelFactory {
-public:
-    KernelImpl* createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const;
-};
+extern "C" OPENMM_EXPORT void registerPlatforms() {
+}
 
-} // namespace OpenMM
+extern "C" OPENMM_EXPORT void registerKernelFactories() {
+    try {
+        Platform& platform = Platform::getPlatformByName("CUDA");
+        CudaTholeDipoleKernelFactory* factory = new CudaTholeDipoleKernelFactory();
+        platform.registerKernelFactory(CalcTholeDipoleForceKernel::Name(), factory);
+    }
+    catch (std::exception ex) {
+        // Ignore
+    }
+}
 
-#endif /*OPENMM_CUDAEXAMPLEKERNELFACTORY_H_*/
+extern "C" OPENMM_EXPORT void registerTholeDipoleCudaKernelFactories() {
+    try {
+        Platform::getPlatformByName("CUDA");
+    }
+    catch (...) {
+        Platform::registerPlatform(new CudaPlatform());
+    }
+    registerKernelFactories();
+}
+
+KernelImpl* CudaTholeDipoleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
+    CudaContext& cu = *static_cast<CudaPlatform::PlatformData*>(context.getPlatformData())->contexts[0];
+    if (name == CalcTholeDipoleForceKernel::Name())
+        return new CommonCalcTholeDipoleForceKernel(name, platform, cu, context.getSystem());
+    throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '")+name+"'").c_str());
+}

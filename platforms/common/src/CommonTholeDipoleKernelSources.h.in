@@ -1,5 +1,5 @@
-#ifndef OPENMM_COMMONEXAMPLEKERNELSOURCES_H_
-#define OPENMM_COMMONEXAMPLEKERNELSOURCES_H_
+#ifndef OPENMM_COMMONTHOLEDIPOLEKERNELSOURCES_H_
+#define OPENMM_COMMONTHOLEDIPOLEKERNELSOURCES_H_
 
 /* -------------------------------------------------------------------------- *
  *                                   OpenMM                                   *
@@ -34,7 +34,7 @@
 
 #include <string>
 
-namespace ExamplePlugin {
+namespace TholeDipolePlugin {
 
 /**
  * This class is a central holding place for the source code of common kernels.
@@ -42,11 +42,11 @@ namespace ExamplePlugin {
  * kernels subfolder.
  */
 
-class CommonExampleKernelSources {
+class CommonTholeDipoleKernelSources {
 public:
 @KERNEL_FILE_DECLARATIONS@
 };
 
-} // namespace ExamplePlugin
+} // namespace TholeDipolePlugin
 
-#endif /*OPENMM_COMMONEXAMPLEKERNELSOURCES_H_*/
+#endif /*OPENMM_COMMONTHOLEDIPOLEKERNELSOURCES_H_*/

@@ -1,5 +1,5 @@
 /* -------------------------------------------------------------------------- *
- *                                   OpenMM                                   *
+ *                           OpenMMTholeDipole                                   *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
@@ -29,43 +29,45 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "ExampleForce.h"
-#include "internal/ExampleForceImpl.h"
+#include <exception>
+
+#include "OpenCLTholeDipoleKernelFactory.h"
+#include "CommonTholeDipoleKernels.h"
+#include "openmm/opencl/OpenCLContext.h"
+#include "openmm/internal/windowsExport.h"
+#include "openmm/internal/ContextImpl.h"
 #include "openmm/OpenMMException.h"
-#include "openmm/internal/AssertionUtilities.h"
 
-using namespace ExamplePlugin;
+using namespace TholeDipolePlugin;
 using namespace OpenMM;
-using namespace std;
 
-ExampleForce::ExampleForce() {
+extern "C" OPENMM_EXPORT void registerPlatforms() {
 }
 
-int ExampleForce::addBond(int particle1, int particle2, double length, double k) {
-    bonds.push_back(BondInfo(particle1, particle2, length, k));
-    return bonds.size()-1;
+extern "C" OPENMM_EXPORT void registerKernelFactories() {
+    try {
+        Platform& platform = Platform::getPlatformByName("OpenCL");
+        OpenCLTholeDipoleKernelFactory* factory = new OpenCLTholeDipoleKernelFactory();
+        platform.registerKernelFactory(CalcTholeDipoleForceKernel::Name(), factory);
+    }
+    catch (std::exception ex) {
+        // Ignore
+    }
 }
 
-void ExampleForce::getBondParameters(int index, int& particle1, int& particle2, double& length, double& k) const {
-    ASSERT_VALID_INDEX(index, bonds);
-    particle1 = bonds[index].particle1;
-    particle2 = bonds[index].particle2;
-    length = bonds[index].length;
-    k = bonds[index].k;
+extern "C" OPENMM_EXPORT void registerTholeDipoleOpenCLKernelFactories() {
+    try {
+        Platform::getPlatformByName("OpenCL");
+    }
+    catch (...) {
+        Platform::registerPlatform(new OpenCLPlatform());
+    }
+    registerKernelFactories();
 }
 
-void ExampleForce::setBondParameters(int index, int particle1, int particle2, double length, double k) {
-    ASSERT_VALID_INDEX(index, bonds);
-    bonds[index].particle1 = particle1;
-    bonds[index].particle2 = particle2;
-    bonds[index].length = length;
-    bonds[index].k = k;
-}
-
-ForceImpl* ExampleForce::createImpl() const {
-    return new ExampleForceImpl(*this);
-}
-
-void ExampleForce::updateParametersInContext(Context& context) {
-    dynamic_cast<ExampleForceImpl&>(getImplInContext(context)).updateParametersInContext(getContextImpl(context));
+KernelImpl* OpenCLTholeDipoleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
+    OpenCLContext& cl = *static_cast<OpenCLPlatform::PlatformData*>(context.getPlatformData())->contexts[0];
+    if (name == CalcTholeDipoleForceKernel::Name())
+        return new CommonCalcTholeDipoleForceKernel(name, platform, cl, context.getSystem());
+    throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '")+name+"'").c_str());
 }

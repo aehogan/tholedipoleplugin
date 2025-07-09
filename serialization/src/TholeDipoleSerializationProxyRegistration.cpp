@@ -1,8 +1,5 @@
-#ifndef OPENMM_REFERENCEEXAMPLEKERNELFACTORY_H_
-#define OPENMM_REFERENCEEXAMPLEKERNELFACTORY_H_
-
 /* -------------------------------------------------------------------------- *
- *                                   OpenMM                                   *
+ *                             OpenMMTholeDipole                                 *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
@@ -32,19 +29,34 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "openmm/KernelFactory.h"
+#ifdef WIN32
+#include <windows.h>
+#include <sstream>
+#else
+#include <dlfcn.h>
+#include <dirent.h>
+#include <cstdlib>
+#endif
 
-namespace OpenMM {
+#include "TholeDipoleForce.h"
+#include "TholeDipoleForceProxy.h"
+#include "openmm/serialization/SerializationProxy.h"
 
-/**
- * This KernelFactory creates kernels for the reference implementation of the Example plugin.
- */
+#if defined(WIN32)
+    #include <windows.h>
+    extern "C" OPENMM_EXPORT_THOLEDIPOLE void registerTholeDipoleSerializationProxies();
+    BOOL WINAPI DllMain(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved) {
+        if (ul_reason_for_call == DLL_PROCESS_ATTACH)
+            registerTholeDipoleSerializationProxies();
+        return TRUE;
+    }
+#else
+    extern "C" void __attribute__((constructor)) registerTholeDipoleSerializationProxies();
+#endif
 
-class ReferenceExampleKernelFactory : public KernelFactory {
-public:
-    KernelImpl* createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const;
-};
+using namespace TholeDipolePlugin;
+using namespace OpenMM;
 
-} // namespace OpenMM
-
-#endif /*OPENMM_REFERENCEEXAMPLEKERNELFACTORY_H_*/
+extern "C" OPENMM_EXPORT_THOLEDIPOLE void registerTholeDipoleSerializationProxies() {
+    SerializationProxy::registerProxy(typeid(TholeDipoleForce), new TholeDipoleForceProxy());
+}

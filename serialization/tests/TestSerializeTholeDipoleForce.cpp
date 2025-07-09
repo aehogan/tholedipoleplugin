@@ -1,5 +1,5 @@
 /* -------------------------------------------------------------------------- *
- *                              OpenMMExample                                   *
+ *                             OpenMMTholeDipole                                 *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
@@ -29,35 +29,59 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "ReferenceExampleKernelFactory.h"
-#include "ReferenceExampleKernels.h"
-#include "openmm/reference/ReferencePlatform.h"
-#include "openmm/internal/ContextImpl.h"
-#include "openmm/OpenMMException.h"
+#include "TholeDipoleForce.h"
+#include "openmm/Platform.h"
+#include "openmm/internal/AssertionUtilities.h"
+#include "openmm/serialization/XmlSerializer.h"
+#include <iostream>
+#include <sstream>
 
-using namespace ExamplePlugin;
+using namespace TholeDipolePlugin;
 using namespace OpenMM;
+using namespace std;
 
-extern "C" OPENMM_EXPORT void registerPlatforms() {
-}
+extern "C" void registerTholeDipoleSerializationProxies();
 
-extern "C" OPENMM_EXPORT void registerKernelFactories() {
-    for (int i = 0; i < Platform::getNumPlatforms(); i++) {
-        Platform& platform = Platform::getPlatform(i);
-        if (dynamic_cast<ReferencePlatform*>(&platform) != NULL) {
-            ReferenceExampleKernelFactory* factory = new ReferenceExampleKernelFactory();
-            platform.registerKernelFactory(CalcExampleForceKernel::Name(), factory);
-        }
+void testSerialization() {
+    // Create a Force.
+
+    TholeDipoleForce force;
+    force.addBond(0, 1, 1.0, 2.0);
+    force.addBond(0, 2, 2.0, 2.1);
+    force.addBond(2, 3, 3.0, 2.2);
+    force.addBond(5, 1, 4.0, 2.3);
+
+    // Serialize and then deserialize it.
+
+    stringstream buffer;
+    XmlSerializer::serialize<TholeDipoleForce>(&force, "Force", buffer);
+    TholeDipoleForce* copy = XmlSerializer::deserialize<TholeDipoleForce>(buffer);
+
+    // Compare the two forces to see if they are identical.
+
+    TholeDipoleForce& force2 = *copy;
+    ASSERT_EQUAL(force.getNumBonds(), force2.getNumBonds());
+    for (int i = 0; i < force.getNumBonds(); i++) {
+        int a1, a2, b1, b2;
+        double da, db, ka, kb;
+        force.getBondParameters(i, a1, a2, da, ka);
+        force2.getBondParameters(i, b1, b2, db, kb);
+        ASSERT_EQUAL(a1, b1);
+        ASSERT_EQUAL(a2, b2);
+        ASSERT_EQUAL(da, db);
+        ASSERT_EQUAL(ka, kb);
     }
 }
 
-extern "C" OPENMM_EXPORT void registerExampleReferenceKernelFactories() {
-    registerKernelFactories();
-}
-
-KernelImpl* ReferenceExampleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
-    ReferencePlatform::PlatformData& data = *static_cast<ReferencePlatform::PlatformData*>(context.getPlatformData());
-    if (name == CalcExampleForceKernel::Name())
-        return new ReferenceCalcExampleForceKernel(name, platform);
-    throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '")+name+"'").c_str());
+int main() {
+    try {
+        registerTholeDipoleSerializationProxies();
+        testSerialization();
+    }
+    catch(const exception& e) {
+        cout << "exception: " << e.what() << endl;
+        return 1;
+    }
+    cout << "Done" << endl;
+    return 0;
 }

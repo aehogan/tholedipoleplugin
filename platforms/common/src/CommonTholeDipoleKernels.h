@@ -1,5 +1,5 @@
-#ifndef OPENMM_EXAMPLEFORCEIMPL_H_
-#define OPENMM_EXAMPLEFORCEIMPL_H_
+#ifndef COMMON_THOLEDIPOLE_KERNELS_H_
+#define COMMON_THOLEDIPOLE_KERNELS_H_
 
 /* -------------------------------------------------------------------------- *
  *                                   OpenMM                                   *
@@ -9,7 +9,7 @@
  * Biological Structures at Stanford, funded under the NIH Roadmap for        *
  * Medical Research, grant U54 GM072970. See https://simtk.org.               *
  *                                                                            *
- * Portions copyright (c) 2014 Stanford University and the Authors.           *
+ * Portions copyright (c) 2014-2021 Stanford University and the Authors.      *
  * Authors: Peter Eastman                                                     *
  * Contributors:                                                              *
  *                                                                            *
@@ -32,44 +32,51 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#include "ExampleForce.h"
-#include "openmm/internal/ForceImpl.h"
-#include "openmm/Kernel.h"
-#include <utility>
-#include <set>
-#include <string>
+#include "TholeDipoleKernels.h"
+#include "openmm/common/ComputeContext.h"
+#include "openmm/common/ComputeArray.h"
 
-namespace ExamplePlugin {
-
-class System;
+namespace TholeDipolePlugin {
 
 /**
- * This is the internal implementation of ExampleForce.
+ * This kernel is invoked by TholeDipoleForce to calculate the forces acting on the system and the energy of the system.
  */
-
-class OPENMM_EXPORT_EXAMPLE ExampleForceImpl : public OpenMM::ForceImpl {
+class CommonCalcTholeDipoleForceKernel : public CalcTholeDipoleForceKernel {
 public:
-    ExampleForceImpl(const ExampleForce& owner);
-    ~ExampleForceImpl();
-    void initialize(OpenMM::ContextImpl& context);
-    const ExampleForce& getOwner() const {
-        return owner;
+    CommonCalcTholeDipoleForceKernel(std::string name, const OpenMM::Platform& platform, OpenMM::ComputeContext& cc, const OpenMM::System& system) :
+            CalcTholeDipoleForceKernel(name, platform), hasInitializedKernel(false), cc(cc), system(system) {
     }
-    void updateContextState(OpenMM::ContextImpl& context, bool& forcesInvalid) {
-        // This force field doesn't update the state directly.
-    }
-    double calcForcesAndEnergy(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy, int groups);
-    std::map<std::string, double> getDefaultParameters() {
-        return std::map<std::string, double>(); // This force field doesn't define any parameters.
-    }
-    std::vector<std::string> getKernelNames();
-    std::vector<std::pair<int, int> > getBondedParticles() const;
-    void updateParametersInContext(OpenMM::ContextImpl& context);
+    /**
+     * Initialize the kernel.
+     * 
+     * @param system     the System this kernel will be applied to
+     * @param force      the TholeDipoleForce this kernel will be used for
+     */
+    void initialize(const OpenMM::System& system, const TholeDipoleForce& force);
+    /**
+     * Execute the kernel to calculate the forces and/or energy.
+     *
+     * @param context        the context in which to execute this kernel
+     * @param includeForces  true if forces should be calculated
+     * @param includeEnergy  true if the energy should be calculated
+     * @return the potential energy due to the force
+     */
+    double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
+    /**
+     * Copy changed parameters over to a context.
+     *
+     * @param context    the context to copy parameters to
+     * @param force      the TholeDipoleForce to copy the parameters from
+     */
+    void copyParametersToContext(OpenMM::ContextImpl& context, const TholeDipoleForce& force);
 private:
-    const ExampleForce& owner;
-    OpenMM::Kernel kernel;
+    int numBonds;
+    bool hasInitializedKernel;
+    OpenMM::ComputeContext& cc;
+    const OpenMM::System& system;
+    OpenMM::ComputeArray params;
 };
 
-} // namespace ExamplePlugin
+} // namespace TholeDipolePlugin
 
-#endif /*OPENMM_EXAMPLEFORCEIMPL_H_*/
+#endif /*COMMON_THOLEDIPOLE_KERNELS_H_*/
