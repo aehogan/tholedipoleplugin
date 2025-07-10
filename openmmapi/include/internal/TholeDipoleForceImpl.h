@@ -61,7 +61,6 @@ public:
         return std::map<std::string, double>(); // This force field doesn't define any parameters.
     }
     std::vector<std::string> getKernelNames();
-    std::vector<std::pair<int, int> > getBondedParticles() const;
     void updateParametersInContext(OpenMM::ContextImpl& context);
     void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
     void getInducedDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles);

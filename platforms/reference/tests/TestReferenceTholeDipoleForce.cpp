@@ -39,6 +39,7 @@
 #include "TholeDipoleForce.h"
 #include "openmm/System.h"
 #include "openmm/LangevinIntegrator.h"
+#include "ReferenceTests.h"
 #include <iostream>
 #include <vector>
 #include <stdlib.h>
@@ -54,7 +55,7 @@ using namespace std;
 
 const double TOL = 1e-4;
 
-Platform& platform = Platform::getPlatformByName("Reference");
+// Platform will be set up in setupKernels()
 
 // setup for 2 ammonia molecules
 
@@ -231,7 +232,7 @@ static void testTholeDipoleAmmoniaDirectPolarization() {
     setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Direct, 
                                              cutoff, inputPmeGridDimension);
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     getForcesEnergyTholeDipoleAmmonia(context, forces, energy);
     std::vector<Vec3> expectedForces(numberOfParticles);
 
@@ -270,7 +271,7 @@ static void testTholeDipoleAmmoniaMutualPolarization() {
     setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Mutual, 
                                              cutoff, inputPmeGridDimension);
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     getForcesEnergyTholeDipoleAmmonia(context, forces, energy);
     std::vector<Vec3> expectedForces(numberOfParticles);
 
@@ -420,7 +421,7 @@ static void setupAndGetForcesEnergyTholeDipoleWater(TholeDipoleForce::NonbondedM
     system.addForce(tholeDipoleForce);
 
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
 
     context.setPositions(positions);
     State state                      = context.getState(State::Forces | State::Energy);
@@ -490,7 +491,7 @@ static void testParticleInducedDipoles() {
     setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Mutual, 
                                              cutoff, inputPmeGridDimension);
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     getForcesEnergyTholeDipoleAmmonia(context, forces, energy);
     std::vector<Vec3> dipole;
     tholeDipoleForce->getInducedDipoles(context, dipole);
@@ -517,7 +518,7 @@ static void testParticleLabFramePermanentDipoles() {
     setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Mutual, 
                                              cutoff, inputPmeGridDimension);
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     getForcesEnergyTholeDipoleAmmonia(context, forces, energy);
     std::vector<Vec3> dipole;
     tholeDipoleForce->getLabFramePermanentDipoles(context, dipole);
@@ -544,7 +545,7 @@ static void testParticleTotalDipoles() {
     setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Mutual, 
                                              cutoff, inputPmeGridDimension);
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     getForcesEnergyTholeDipoleAmmonia(context, forces, energy);
     std::vector<Vec3> dipole;
     tholeDipoleForce->getTotalDipoles(context, dipole);
@@ -629,7 +630,7 @@ void testTriclinic() {
     // Compute the forces and energy.
 
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     context.setPositions(positions);
     State state = context.getState(State::Forces | State::Energy);
 
@@ -694,7 +695,7 @@ void testZBisect() {
         force->setCovalentMap(i, TholeDipoleForce::Covalent13, map);
     }
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     vector<Vec3> positions;
     positions.push_back(Vec3(-0.06317711175870899, -0.04905009196658128, 0.0767217));
     positions.push_back(Vec3(-0.049166918626451395, -0.20747614470348363, 0.03979849999999996));
@@ -731,7 +732,7 @@ void testZOnly() {
     // Evaluate the forces.
     
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     context.setPositions(positions);
     State state = context.getState(State::Forces);
     double norm = 0.0;
@@ -776,7 +777,7 @@ void testNeutralizingPlasmaCorrection() {
     // Compute the energy.
 
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, platform);
+    Context context(system, integrator, *platform);
     context.setPositions(positions);
     double energy1 = context.getState(State::Energy).getPotentialEnergy();
 
@@ -798,9 +799,6 @@ void testNeutralizingPlasmaCorrection() {
     double energy4 = context.getState(State::Energy).getPotentialEnergy();
     ASSERT_EQUAL_TOL(energy3, energy4, 1e-4);
 }
-
-void setupKernels(int argc, char* argv[]);
-void runPlatformTests();
 
 int main(int argc, char* argv[]) {
     try {
