@@ -3,6 +3,7 @@
 
 using namespace TholeDipolePlugin;
 using namespace OpenMM;
+using std::vector;
 
 ReferenceTholeDipoleForce::ReferenceTholeDipoleForce() : _nonbondedMethod(NoCutoff) {
     initialize();
@@ -122,6 +123,272 @@ double ReferenceTholeDipoleForce::calculateForceAndEnergy(const vector<Vec3>& pa
     mapTorqueToForce(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs, 
                      axisTypes, torques, forces);
 
+    return energy;
+}
+
+double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
+    const TholeDipoleParticleData& particleI,
+    const TholeDipoleParticleData& particleK,
+    double mScale,
+    double iScale,
+    vector<Vec3>& forces,
+    vector<Vec3>& torques) const {
+    
+    unsigned int iIndex = particleI.particleIndex;
+    unsigned int kIndex = particleK.particleIndex;
+    
+    Vec3 deltaR = particleK.position - particleI.position;
+    getPeriodicDelta(deltaR);
+    double r2 = deltaR.dot(deltaR);
+    double r = sqrt(r2);
+    
+    // Build rotation matrix to transform dipoles to QI frame
+    double qiRotationMatrix[3][3];
+    formQIRotationMatrix(particleI.position, particleK.position, deltaR, r, qiRotationMatrix);
+    
+    // Force rotation matrix transforms QI forces back to lab frame
+    double forceRotationMatrix[3][3];
+    forceRotationMatrix[0][0] = qiRotationMatrix[1][1];
+    forceRotationMatrix[0][1] = qiRotationMatrix[2][1];
+    forceRotationMatrix[0][2] = qiRotationMatrix[0][1];
+    forceRotationMatrix[1][0] = qiRotationMatrix[1][2];
+    forceRotationMatrix[1][1] = qiRotationMatrix[2][2];
+    forceRotationMatrix[1][2] = qiRotationMatrix[0][2];
+    forceRotationMatrix[2][0] = qiRotationMatrix[1][0];
+    forceRotationMatrix[2][1] = qiRotationMatrix[2][0];
+    forceRotationMatrix[2][2] = qiRotationMatrix[0][0];
+    
+    // Rotate induced dipoles to QI frame
+    double qiUindI[3], qiUindJ[3];
+    for (int i = 0; i < 3; i++) {
+        qiUindI[i] = 0.0;
+        qiUindJ[i] = 0.0;
+        for (int j = 0; j < 3; j++) {
+            qiUindI[i] += qiRotationMatrix[i][j] * _inducedDipole[iIndex][j];
+            qiUindJ[i] += qiRotationMatrix[i][j] * _inducedDipole[kIndex][j];
+        }
+    }
+    
+    // QI frame multipoles for atoms I and J
+    double qiQI[4], qiQJ[4];
+    qiQI[0] = particleI.charge;
+    qiQJ[0] = particleK.charge;
+    
+    // Rotate permanent dipoles to QI frame
+    for (int i = 0; i < 3; i++) {
+        qiQI[i+1] = 0.0;
+        qiQJ[i+1] = 0.0;
+        for (int j = 0; j < 3; j++) {
+            qiQI[i+1] += qiRotationMatrix[i][j] * particleI.dipole[j];
+            qiQJ[i+1] += qiRotationMatrix[i][j] * particleK.dipole[j];
+        }
+    }
+    
+    // Torque intermediates for permanent dipoles
+    double qiQIX[4] = {0.0, qiQI[3], 0.0, -qiQI[1]};
+    double qiQIY[4] = {0.0, -qiQI[2], qiQI[1], 0.0};
+    double qiQIZ[4] = {0.0, 0.0, -qiQI[3], qiQI[2]};
+    double qiQJX[4] = {0.0, qiQJ[3], 0.0, -qiQJ[1]};
+    double qiQJY[4] = {0.0, -qiQJ[2], qiQJ[1], 0.0};
+    double qiQJZ[4] = {0.0, 0.0, -qiQJ[3], qiQJ[2]};
+    
+    // Get Thole-damped interaction tensors
+    vector<double> rInvVec(4);
+    double rInv = 1.0 / r;
+    double prefac = _electric / _dielectric;
+    rInvVec[1] = prefac * rInv;
+    for (int i = 2; i < 4; i++) {
+        rInvVec[i] = rInvVec[i-1] * rInv;
+    }
+    
+    // Thole damping parameters
+    double dmp = particleI.tholeDamping * particleK.tholeDamping;
+    double a = particleI.tholeDamping < particleK.tholeDamping ? 
+               particleI.tholeDamping : particleK.tholeDamping;
+    double u = r / dmp;
+    double au3 = fabs(dmp) > 1.0e-5 ? a * u * u * u : 0.0;
+    double expau3 = fabs(dmp) > 1.0e-5 ? exp(-au3) : 0.0;
+    
+    // Thole damping factors for energies
+    double thole_c = 1.0 - expau3;
+    double thole_d0 = 1.0 - expau3 * (1.0 + 1.5 * au3);
+    double thole_d1 = 1.0 - expau3;
+    
+    // Thole damping factors for derivatives
+    double dthole_c = 1.0 - expau3 * (1.0 + 1.5 * au3);
+    double dthole_d0 = 1.0 - expau3 * (1.0 + au3 + 1.5 * au3 * au3);
+    double dthole_d1 = 1.0 - expau3 * (1.0 + au3);
+    
+    // Field derivatives at I due to J and vice versa
+    double Vij[4], Vji[4], VijR[4], VjiR[4];
+    double Vijp[3], Vijd[3], Vjip[3], Vjid[3];
+    
+    // Initialize arrays
+    for (int i = 0; i < 4; i++) {
+        Vij[i] = 0.0; Vji[i] = 0.0; VijR[i] = 0.0; VjiR[i] = 0.0;
+    }
+    for (int i = 0; i < 3; i++) {
+        Vijp[i] = 0.0; Vijd[i] = 0.0; Vjip[i] = 0.0; Vjid[i] = 0.0;
+    }
+    
+    // C-C interaction (m=0)
+    double ePermCoef = rInvVec[1] * mScale;
+    double dPermCoef = -0.5 * mScale * rInvVec[2];
+    Vij[0] = ePermCoef * qiQJ[0];
+    Vji[0] = ePermCoef * qiQI[0];
+    VijR[0] = dPermCoef * qiQJ[0];
+    VjiR[0] = dPermCoef * qiQI[0];
+    
+    // C-D and C-Uind interactions (m=0)
+    ePermCoef = rInvVec[2] * mScale;
+    double eUIndCoef = rInvVec[2] * iScale * thole_c;
+    dPermCoef = -rInvVec[3] * mScale;
+    double dUIndCoef = -2.0 * rInvVec[3] * iScale * dthole_c;
+    
+    Vij[0] += -(ePermCoef * qiQJ[1] + eUIndCoef * qiUindJ[0]);
+    Vji[1] = -(ePermCoef * qiQI[0]);
+    VijR[0] += -(dPermCoef * qiQJ[1] + dUIndCoef * qiUindJ[0]);
+    VjiR[1] = -(dPermCoef * qiQI[0]);
+    Vjid[0] = -(eUIndCoef * qiQI[0]);
+    
+    // D-C and Uind-C interactions (m=0)
+    Vij[1] = ePermCoef * qiQJ[0];
+    Vji[0] += ePermCoef * qiQI[1] + eUIndCoef * qiUindI[0];
+    VijR[1] = dPermCoef * qiQJ[0];
+    VjiR[0] += dPermCoef * qiQI[1] + dUIndCoef * qiUindI[0];
+    Vijd[0] = eUIndCoef * qiQJ[0];
+    
+    // D-D and D-Uind interactions (m=0)
+    ePermCoef = -2.0 * rInvVec[3] * mScale;
+    eUIndCoef = -2.0 * rInvVec[3] * iScale * thole_d0;
+    dPermCoef = 3.0 * rInvVec[4] * mScale;
+    dUIndCoef = 6.0 * rInvVec[4] * iScale * dthole_d0;
+    
+    Vij[1] += ePermCoef * qiQJ[1] + eUIndCoef * qiUindJ[0];
+    Vji[1] += ePermCoef * qiQI[1] + eUIndCoef * qiUindI[0];
+    VijR[1] += dPermCoef * qiQJ[1] + dUIndCoef * qiUindJ[0];
+    VjiR[1] += dPermCoef * qiQI[1] + dUIndCoef * qiUindI[0];
+    Vijd[0] += eUIndCoef * qiQJ[1];
+    Vjid[0] += eUIndCoef * qiQI[1];
+    
+    // D-D and D-Uind interactions (m=1)
+    ePermCoef = rInvVec[3] * mScale;
+    eUIndCoef = rInvVec[3] * iScale * thole_d1;
+    dPermCoef = -1.5 * rInvVec[4] * mScale;
+    dUIndCoef = -3.0 * rInvVec[4] * iScale * dthole_d1;
+    
+    Vij[2] = ePermCoef * qiQJ[2] + eUIndCoef * qiUindJ[1];
+    Vji[2] = ePermCoef * qiQI[2] + eUIndCoef * qiUindI[1];
+    VijR[2] = dPermCoef * qiQJ[2] + dUIndCoef * qiUindJ[1];
+    VjiR[2] = dPermCoef * qiQI[2] + dUIndCoef * qiUindI[1];
+    Vijd[1] = eUIndCoef * qiQJ[2];
+    Vjid[1] = eUIndCoef * qiQI[2];
+    
+    Vij[3] = ePermCoef * qiQJ[3] + eUIndCoef * qiUindJ[2];
+    Vji[3] = ePermCoef * qiQI[3] + eUIndCoef * qiUindI[2];
+    VijR[3] = dPermCoef * qiQJ[3] + dUIndCoef * qiUindJ[2];
+    VjiR[3] = dPermCoef * qiQI[3] + dUIndCoef * qiUindI[2];
+    Vijd[2] = eUIndCoef * qiQJ[3];
+    Vjid[2] = eUIndCoef * qiQI[3];
+    
+    // Calculate energy, forces and torques
+    double energy = 0.5 * (qiQI[0] * Vij[0] + qiQJ[0] * Vji[0]);
+    double fIZ = qiQI[0] * VijR[0];
+    double fJZ = qiQJ[0] * VjiR[0];
+    double EIX = 0.0, EIY = 0.0, EIZ = 0.0;
+    double EJX = 0.0, EJY = 0.0, EJZ = 0.0;
+    
+    for (int i = 1; i < 4; i++) {
+        energy += 0.5 * (qiQI[i] * Vij[i] + qiQJ[i] * Vji[i]);
+        fIZ += qiQI[i] * VijR[i];
+        fJZ += qiQJ[i] * VjiR[i];
+        EIX += qiQIX[i] * Vij[i];
+        EIY += qiQIY[i] * Vij[i];
+        EIZ += qiQIZ[i] * Vij[i];
+        EJX += qiQJX[i] * Vji[i];
+        EJY += qiQJY[i] * Vji[i];
+        EJZ += qiQJZ[i] * Vji[i];
+    }
+    
+    // Induced dipole torques
+    double iEIX = qiUindI[2] * Vijd[0] - qiUindI[0] * Vijd[2];
+    double iEJX = qiUindJ[2] * Vjid[0] - qiUindJ[0] * Vjid[2];
+    double iEIY = qiUindI[0] * Vijd[1] - qiUindI[1] * Vijd[0];
+    double iEJY = qiUindJ[0] * Vjid[1] - qiUindJ[1] * Vjid[0];
+    
+    // Add Uind-Uind interactions for mutual polarization
+    if (_polarizationType == Mutual) {
+        // Uind-Uind (m=0)
+        double eCoef = -4.0 * rInvVec[3] * iScale * thole_d0;
+        double dCoef = 6.0 * rInvVec[4] * iScale * dthole_d0;
+        iEIX += eCoef * qiUindI[2] * qiUindJ[0];
+        iEJX += eCoef * qiUindJ[2] * qiUindI[0];
+        iEIY -= eCoef * qiUindI[1] * qiUindJ[0];
+        iEJY -= eCoef * qiUindJ[1] * qiUindI[0];
+        fIZ += dCoef * qiUindI[0] * qiUindJ[0];
+        fJZ += dCoef * qiUindJ[0] * qiUindI[0];
+        
+        // Uind-Uind (m=1)
+        eCoef = 2.0 * rInvVec[3] * iScale * thole_d1;
+        dCoef = -3.0 * rInvVec[4] * iScale * dthole_d1;
+        iEIX -= eCoef * qiUindI[0] * qiUindJ[2];
+        iEJX -= eCoef * qiUindJ[0] * qiUindI[2];
+        iEIY += eCoef * qiUindI[0] * qiUindJ[1];
+        iEJY += eCoef * qiUindJ[0] * qiUindI[1];
+        fIZ += dCoef * (qiUindI[1] * qiUindJ[1] + qiUindI[2] * qiUindJ[2]);
+        fJZ += dCoef * (qiUindJ[1] * qiUindI[1] + qiUindJ[2] * qiUindI[2]);
+    }
+    
+    // QI frame forces and torques
+    double qiForce[3] = {rInv * (EIY + EJY + iEIY + iEJY), 
+                         -rInv * (EIX + EJX + iEIX + iEJX), 
+                         -(fJZ + fIZ)};
+    double qiTorqueI[3] = {-EIX, -EIY, -EIZ};
+    double qiTorqueJ[3] = {-EJX, -EJY, -EJZ};
+    
+    // Rotate forces and torques back to lab frame
+    for (int i = 0; i < 3; i++) {
+        double forceVal = 0.0;
+        double torqueIVal = 0.0;
+        double torqueJVal = 0.0;
+        for (int j = 0; j < 3; j++) {
+            forceVal += forceRotationMatrix[i][j] * qiForce[j];
+            torqueIVal += forceRotationMatrix[i][j] * qiTorqueI[j];
+            torqueJVal += forceRotationMatrix[i][j] * qiTorqueJ[j];
+        }
+        torques[iIndex][i] += torqueIVal;
+        torques[kIndex][i] += torqueJVal;
+        forces[iIndex][i] -= forceVal;
+        forces[kIndex][i] += forceVal;
+    }
+    
+    return energy;
+}
+
+double ReferenceTholeDipoleForce::calculateElectrostatic(
+    const vector<TholeDipoleParticleData>& particleData,
+    vector<Vec3>& torques,
+    vector<Vec3>& forces) {
+    
+    double energy = 0.0;
+    
+    // Calculate pairwise interactions
+    for (unsigned int i = 0; i < _numParticles; i++) {
+        for (unsigned int j = i + 1; j < _numParticles; j++) {
+            double mScale = 1.0;
+            double iScale = 1.0;
+            
+            // Get scaling factors if within cutoff
+            if (j <= _maxScaleIndex[i]) {
+                mScale = getScaleFactor(i, j, M_SCALE);
+                iScale = getScaleFactor(i, j, I_SCALE);
+            }
+            
+            energy += calculateElectrostaticPairIxn(particleData[i], particleData[j],
+                                                    mScale, iScale, forces, torques);
+        }
+    }
+    
     return energy;
 }
 
@@ -599,7 +866,7 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByExtrapolation(
     
     // Storage for perturbation theory orders
     vector<vector<Vec3>> extrapolatedDipoles(maxPTOrder);
-    vector<vector<Vec3>> inducedDipoleField(_numParticles);
+    vector<Vec3> inducedDipoleField(_numParticles);
     
     // PT0: Direct dipoles (initial induced dipoles from fixed field only)
     extrapolatedDipoles[0] = _inducedDipole;
@@ -638,11 +905,6 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByExtrapolation(
     _mutualInducedDipoleEpsilon = sqrt(epsilon / _numParticles);
     _mutualInducedDipoleConverged = 1;
     _mutualInducedDipoleIterations = maxPTOrder;
-}
-
-// Also need to add the extrapolation coefficients getter/setter implementations
-void ReferenceTholeDipoleForce::setExtrapolationCoefficients(const vector<double>& coefficients) {
-    _extrapolationCoefficients = coefficients;
 }
 
 const vector<double>& ReferenceTholeDipoleForce::getExtrapolationCoefficients() const {

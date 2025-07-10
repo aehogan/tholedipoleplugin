@@ -158,6 +158,14 @@ public:
     void setExtrapolationCoefficients(const std::vector<double> &coefficients);
 
     /**
+     * Get the coefficients for the μ_0, μ_1, μ_2, μ_n terms in the extrapolation
+     * theory algorithm for induced dipoles
+     *
+     * @return a vector whose mth entry specifies the coefficient for μ_m
+     */
+    const std::vector<double>& getExtrapolationCoefficients() const;
+
+    /**
      * Set the target epsilon for converging mutual induced dipoles.
      *
      * @param targetEpsilon target epsilon for converging mutual induced dipoles
@@ -507,7 +515,34 @@ protected:
      * @return energy
      */
     virtual double calculateElectrostatic(const std::vector<TholeDipoleParticleData>& particleData,
+                                          std::vector<OpenMM::Vec3>& torques,
                                           std::vector<OpenMM::Vec3>& forces);
+
+    /**
+     * Get the scale factors for a pair of interacting particles.
+     *
+     * @param particleI index of the first particle
+     * @param particleJ index of the second particle
+     * @param scaleFactors vector of scale factors to populate
+     */
+    void getTholeDipoleScaleFactors(unsigned int particleI, unsigned int particleJ, std::vector<double>& scaleFactors) const;
+
+    /**
+     * Calculate the electrostatic interaction between two particles.
+     *
+     * @param particleI      the first particle
+     * @param particleJ      the second particle
+     * @param scaleFactors   the scale factors for the interaction
+     * @param forces         the forces are added to this vector
+     * @param torques        the torques are added to this vector
+     * @return the energy of the interaction
+     */
+    virtual double calculateElectrostaticPairIxn(const TholeDipoleParticleData& particleI,
+                                                 const TholeDipoleParticleData& particleJ,
+                                                 double mScale,
+                                                 double iScale,
+                                                 std::vector<Vec3>& forces,
+                                                 std::vector<Vec3>& torques) const;
 
     /**
      * Apply periodic boundary conditions to difference in positions
@@ -515,6 +550,72 @@ protected:
      * @param deltaR  difference in particle positions; modified on output after applying PBC
      */
     virtual void getPeriodicDelta(Vec3& deltaR) const {};
+
+    void setup(const std::vector<Vec3>& particlePositions,
+                          const std::vector<double>& charges,
+                          const std::vector<double>& dipoles,
+                          const std::vector<double>& polarizabilities,
+                          const std::vector<double>& tholeDampingFactors,
+                          const std::vector<int>& axisTypes,
+                          const std::vector<int>& multipoleAtomZs,
+                          const std::vector<int>& multipoleAtomXs,
+                          const std::vector<int>& multipoleAtomYs,
+                          const std::vector<std::vector<std::vector<int>>>& multipoleCovalentInfo,
+                          std::vector<TholeDipoleParticleData>& particleData);
+
+    void initializeVec3Vector(std::vector<Vec3>& vec3Vector) const;
+
+    void checkChiralCenterAtParticle(TholeDipoleParticleData& particleI, 
+                                     int axisType,
+                                     const TholeDipoleParticleData& particleZ, 
+                                     const TholeDipoleParticleData& particleX,
+                                     const TholeDipoleParticleData& particleY) const;
+
+    void checkChiral(std::vector<TholeDipoleParticleData>& particleData,
+                     const std::vector<int>& multipoleAtomXs,
+                     const std::vector<int>& multipoleAtomYs,
+                     const std::vector<int>& multipoleAtomZs,
+                     const std::vector<int>& axisTypes) const;
+
+    void normalizeVec3(Vec3& vector) const;
+
+    void applyRotationMatrixToParticle(TholeDipoleParticleData& particleI,
+                                       const TholeDipoleParticleData* particleZ,
+                                       const TholeDipoleParticleData* particleX,
+                                       const TholeDipoleParticleData* particleY,
+                                       int axisType) const;
+
+    void formQIRotationMatrix(const Vec3& iPosition,
+                              const Vec3& jPosition,
+                              const Vec3& deltaR,
+                              double r,
+                              double (&rotationMatrix)[3][3]) const;
+
+    void getAndScaleInverseRs(double dampI, double dampJ,
+                              double tholeI, double tholeJ,
+                              double r, std::vector<double>& rrI) const;
+
+    void calculateInducedDipolePairIxn(unsigned int particleI,
+                                       unsigned int particleJ,
+                                       double rr3,
+                                       double rr5,
+                                       const Vec3& deltaR,
+                                       const std::vector<Vec3>& inducedDipole,
+                                       std::vector<Vec3>& field) const;
+
+    void calculateInducedDipoleFields(const std::vector<TholeDipoleParticleData>& particleData,
+                                      const std::vector<Vec3>& inducedDipoles,
+                                      std::vector<Vec3>& inducedDipoleField);
+
+    void mapTorqueToForce(const std::vector<TholeDipoleParticleData>& particleData,
+                          const std::vector<int>& multipoleAtomXs,
+                          const std::vector<int>& multipoleAtomYs,
+                          const std::vector<int>& multipoleAtomZs,
+                          const std::vector<int>& axisTypes,
+                          std::vector<Vec3>& torques,
+                          std::vector<Vec3>& forces) const;
+
+    double calculateElectrostaticPotentialForParticleGridPoint(const TholeDipoleParticleData& particleI, const Vec3& gridPoint) const;
 };
 
 /**
