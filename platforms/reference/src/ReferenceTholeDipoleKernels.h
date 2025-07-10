@@ -33,20 +33,20 @@
  * -------------------------------------------------------------------------- */
 
 #include "TholeDipoleKernels.h"
+#include "TholeDipoleForce.h"
+#include "ReferenceTholeDipoleForce.h"
 #include "openmm/Platform.h"
 #include "openmm/Vec3.h"
 #include <vector>
 
 namespace TholeDipolePlugin {
 
-class ReferenceTholeDipoleForce;
-
 /**
  * This kernel is invoked by TholeDipoleForce to calculate the forces acting on the system and the energy of the system.
  */
 class ReferenceCalcTholeDipoleForceKernel : public CalcTholeDipoleForceKernel {
 public:
-    ReferenceCalcTholeDipoleForceKernel(const std::string& name, const OpenMM::Platform& platform, const OpenMM::System& system);
+    ReferenceCalcTholeDipoleForceKernel(const std::string& name, const ::OpenMM::Platform& platform, const ::OpenMM::System& system);
     ~ReferenceCalcTholeDipoleForceKernel();
     
     /**
@@ -55,7 +55,7 @@ public:
      * @param system     the System this kernel will be applied to
      * @param force      the TholeDipoleForce this kernel will be used for
      */
-    void initialize(const OpenMM::System& system, const TholeDipoleForce& force);
+    void initialize(const ::OpenMM::System& system, const TholeDipoleForce& force);
     
     /**
      * Execute the kernel to calculate the forces and/or energy.
@@ -65,7 +65,7 @@ public:
      * @param includeEnergy  true if the energy should be calculated
      * @return the potential energy due to the force
      */
-    double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
+    double execute(::OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
     
     /**
      * Calculate the induced dipoles.
@@ -115,7 +115,7 @@ public:
      * @param context    the context to copy parameters to
      * @param force      the TholeDipoleForce to copy the parameters from
      */
-    void copyParametersToContext(OpenMM::ContextImpl& context, const TholeDipoleForce& force);
+    void copyParametersToContext(::OpenMM::ContextImpl& context, const TholeDipoleForce& force);
     
     /**
      * Get the parameters being used for PME.
@@ -128,7 +128,7 @@ public:
     void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
 
 private:
-    ReferenceTholeDipoleForce* setupReferenceTholeDipoleForce(OpenMM::ContextImpl& context);
+    ReferenceTholeDipoleForce* setupReferenceTholeDipoleForce(::OpenMM::ContextImpl& context);
     
     const OpenMM::System& system;
     int numParticles;

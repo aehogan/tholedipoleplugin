@@ -1,4 +1,4 @@
-i/* -------------------------------------------------------------------------- *
+/* -------------------------------------------------------------------------- *
  *                              OpenMMTholeDipole                             *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
@@ -53,6 +53,8 @@ using namespace TholeDipolePlugin;
 using namespace std;
 
 const double TOL = 1e-4;
+
+Platform& platform = Platform::getPlatformByName("Reference");
 
 // setup for 2 ammonia molecules
 

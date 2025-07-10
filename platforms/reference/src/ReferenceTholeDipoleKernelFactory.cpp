@@ -58,6 +58,6 @@ extern "C" OPENMM_EXPORT void registerTholeDipoleReferenceKernelFactories() {
 KernelImpl* ReferenceTholeDipoleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
     ReferencePlatform::PlatformData& data = *static_cast<ReferencePlatform::PlatformData*>(context.getPlatformData());
     if (name == CalcTholeDipoleForceKernel::Name())
-        return new ReferenceCalcTholeDipoleForceKernel(name, platform);
+        return new ReferenceCalcTholeDipoleForceKernel(name, platform, context.getSystem());
     throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '")+name+"'").c_str());
 }

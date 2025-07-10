@@ -50,7 +50,7 @@ TholeDipoleForceImpl::~TholeDipoleForceImpl() {
 }
 
 void TholeDipoleForceImpl::initialize(ContextImpl& context) {
-    const System& system = context.getSystem();
+    const OpenMM::System& system = context.getSystem();
     int numParticles = system.getNumParticles();
     if (owner.getNumParticles() != numParticles)
         throw OpenMMException("TholeDipoleForce must have exactly as many particles as the System it belongs to.");

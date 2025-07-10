@@ -41,8 +41,6 @@
 
 namespace TholeDipolePlugin {
 
-class System;
-
 /**
  * This is the internal implementation of TholeDipoleForce.
  */
@@ -65,9 +63,28 @@ public:
     std::vector<std::string> getKernelNames();
     std::vector<std::pair<int, int> > getBondedParticles() const;
     void updateParametersInContext(OpenMM::ContextImpl& context);
+    void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
+    void getInducedDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles);
+    void getLabFramePermanentDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles);
+    void getTotalDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles);
+    void getElectrostaticPotential(OpenMM::ContextImpl& context, const std::vector<OpenMM::Vec3>& inputGrid,
+                                   std::vector<double>& outputElectrostaticPotential);
+    void getSystemMultipoleMoments(OpenMM::ContextImpl& context, std::vector<double>& outputMultipoleMoments);
+    
+    // Static helper methods
+    static const int* getCovalentDegrees();
+    static void getCovalentRange(const TholeDipoleForce& force, int atomIndex,
+                                const std::vector<TholeDipoleForce::CovalentType>& lists,
+                                int* minCovalentIndex, int* maxCovalentIndex);
+    static void getCovalentDegree(const TholeDipoleForce& force, std::vector<int>& covalentDegree);
+    
 private:
     const TholeDipoleForce& owner;
     OpenMM::Kernel kernel;
+    
+    // Static members for covalent degree handling
+    static bool initializedCovalentDegrees;
+    static int CovalentDegrees[TholeDipoleForce::CovalentEnd];
 };
 
 } // namespace TholeDipolePlugin

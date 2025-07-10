@@ -73,6 +73,52 @@ public:
      * @param force      the TholeDipoleForce to copy the parameters from
      */
     virtual void copyParametersToContext(OpenMM::ContextImpl& context, const TholeDipoleForce& force) = 0;
+    /**
+     * Get the PME parameters being used for the current context.
+     *
+     * @param alpha   the separation parameter
+     * @param nx      the number of grid points along the X axis
+     * @param ny      the number of grid points along the Y axis
+     * @param nz      the number of grid points along the Z axis
+     */
+    virtual void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const = 0;
+    /**
+     * Get the induced dipole moments of all particles.
+     *
+     * @param context         the context for which to get the induced dipoles
+     * @param dipoles         the induced dipole moment of particle i is stored into the i'th element
+     */
+    virtual void getInducedDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles) = 0;
+    /**
+     * Get the fixed dipole moments of all particles in the global reference frame.
+     *
+     * @param context         the context for which to get the fixed dipoles
+     * @param dipoles         the fixed dipole moment of particle i is stored into the i'th element
+     */
+    virtual void getLabFramePermanentDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles) = 0;
+    /**
+     * Get the total dipole moments (fixed plus induced) of all particles.
+     *
+     * @param context         the context for which to get the total dipoles
+     * @param dipoles         the total dipole moment of particle i is stored into the i'th element
+     */
+    virtual void getTotalDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles) = 0;
+    /**
+     * Get the electrostatic potential.
+     *
+     * @param context                           the context
+     * @param inputGrid                         input grid points over which the potential is to be evaluated
+     * @param outputElectrostaticPotential     output potential
+     */
+    virtual void getElectrostaticPotential(OpenMM::ContextImpl& context, const std::vector<OpenMM::Vec3>& inputGrid,
+                                           std::vector<double>& outputElectrostaticPotential) = 0;
+    /**
+     * Get the system multipole moments.
+     *
+     * @param context                           the context
+     * @param outputMultipoleMoments            output multipole moments
+     */
+    virtual void getSystemMultipoleMoments(OpenMM::ContextImpl& context, std::vector<double>& outputMultipoleMoments) = 0;
 };
 
 } // namespace TholeDipolePlugin
