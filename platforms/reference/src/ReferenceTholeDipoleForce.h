@@ -98,7 +98,7 @@ public:
     /**
      * Destructor
      */
-    virtual ~ReferenceTholeDipoleForce() {};
+    virtual ~ReferenceTholeDipoleForce();
 
     /**
      * Get nonbonded method.
@@ -452,6 +452,44 @@ protected:
                              const std::vector<int>& multipoleAtomZs,
                              const std::vector<int>& multipoleAtomXs,
                              const std::vector<int>& multipoleAtomYs) const;
+
+    /**
+     * Zero fixed dipole fields.
+     */
+    virtual void zeroFixedDipoleFields();
+
+    /**
+     * Calculate fixed dipole field at each site.
+     * 
+     * @param particleData      vector of particle positions and parameters
+     */
+    virtual void calculateFixedDipoleField(const std::vector<TholeDipoleParticleData>& particleData);
+
+    /**
+     * Calculate field at particle I due to fixed dipole at particle J and vice versa.
+     * 
+     * @param particleI       particle I data
+     * @param particleJ       particle J data
+     * @param dScale          d-scale factor for this interaction
+     * @param pScale          p-scale factor for this interaction  
+     */
+    virtual void calculateFixedDipoleFieldPairIxn(const TholeDipoleParticleData& particleI, 
+                                                   const TholeDipoleParticleData& particleJ,
+                                                   double dScale, double pScale);
+
+    /**
+     * Converge induced dipoles using DIIS for mutual polarization.
+     * 
+     * @param particleData      vector of particle positions and parameters
+     */
+    virtual void convergeInducedDipolesByDIIS(const std::vector<TholeDipoleParticleData>& particleData);
+
+    /**
+     * Converge induced dipoles using extrapolated perturbation theory.
+     * 
+     * @param particleData      vector of particle positions and parameters
+     */
+    virtual void convergeInducedDipolesByExtrapolation(const std::vector<TholeDipoleParticleData>& particleData);
 
     /**
      * Calculate induced dipoles.

@@ -46,6 +46,7 @@ void TholeDipoleForceProxy::serialize(const void* object, SerializationNode& nod
     const TholeDipoleForce& force = *reinterpret_cast<const TholeDipoleForce*>(object);
     
     // Serialize force parameters
+    node.setIntProperty("forceGroup", force.getForceGroup());
     node.setIntProperty("nonbondedMethod", force.getNonbondedMethod());
     node.setIntProperty("polarizationType", force.getPolarizationType());
     node.setDoubleProperty("cutoffDistance", force.getCutoffDistance());
@@ -116,6 +117,7 @@ void* TholeDipoleForceProxy::deserialize(const SerializationNode& node) const {
     TholeDipoleForce* force = new TholeDipoleForce();
     try {
         // Deserialize force parameters
+        force->setForceGroup(node.getIntProperty("forceGroup"));
         force->setNonbondedMethod(static_cast<TholeDipoleForce::NonbondedMethod>(node.getIntProperty("nonbondedMethod")));
         force->setPolarizationType(static_cast<TholeDipoleForce::PolarizationType>(node.getIntProperty("polarizationType")));
         force->setCutoffDistance(node.getDoubleProperty("cutoffDistance"));
