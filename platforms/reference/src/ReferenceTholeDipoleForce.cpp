@@ -466,11 +466,12 @@ void ReferenceTholeDipoleForce::checkChiral(vector<TholeDipoleParticleData>& par
     }
 }
 
-void ReferenceTholeDipoleForce::normalizeVec3(Vec3& vector) const {
+double ReferenceTholeDipoleForce::normalizeVec3(Vec3& vector) const {
     double norm = sqrt(vector.dot(vector));
     if (norm > 0.0) {
-        vector *= 1.0 / norm;
+        vector *= (1.0/norm);
     }
+    return norm;
 }
 
 void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
@@ -911,6 +912,183 @@ const vector<double>& ReferenceTholeDipoleForce::getExtrapolationCoefficients() 
     return _extrapolationCoefficients;
 }
 
+void ReferenceTholeDipoleForce::mapTorqueToForceForParticle(
+    const TholeDipoleParticleData& particleI,
+    const TholeDipoleParticleData& particleU,
+    const TholeDipoleParticleData& particleV,
+    const TholeDipoleParticleData* particleW,
+    int axisType,
+    const Vec3& torque,
+    vector<Vec3>& forces) const {
+
+    // Get coordinates of this atom and the axis atoms
+    if (axisType == TholeDipoleForce::NoAxisType) {
+        return;
+    }
+
+    Vec3 vectorU = particleU.position - particleI.position;
+    double normU = normalizeVec3(vectorU);
+
+    Vec3 vectorV = particleV.position - particleI.position;
+    double normV = normalizeVec3(vectorV);
+
+    Vec3 vectorW;
+    double normW;
+    if (particleW && (axisType == TholeDipoleForce::ZBisect || axisType == TholeDipoleForce::ThreeFold)) {
+        vectorW = particleW->position - particleI.position;
+    } else {
+        vectorW = vectorU.cross(vectorV);
+    }
+    normW = normalizeVec3(vectorW);
+
+    Vec3 vectorUV = vectorV.cross(vectorU);
+    Vec3 vectorUW = vectorW.cross(vectorU);
+    Vec3 vectorVW = vectorW.cross(vectorV);
+
+    normalizeVec3(vectorUV);
+    normalizeVec3(vectorUW);
+    normalizeVec3(vectorVW);
+
+    // Calculate angles
+    double cosUV = vectorU.dot(vectorV);
+    double sinUV = sqrt(1.0 - cosUV*cosUV);
+
+    double cosUW = vectorU.dot(vectorW);
+    double sinUW = sqrt(1.0 - cosUW*cosUW);
+
+    double cosVW = vectorV.dot(vectorW);
+    double sinVW = sqrt(1.0 - cosVW*cosVW);
+
+    // Project torque onto local axes
+    Vec3 dphi;
+    dphi[0] = vectorU.dot(torque);
+    dphi[1] = vectorV.dot(torque);
+    dphi[2] = vectorW.dot(torque);
+    dphi *= -1.0;
+
+    // Branch based on axis type
+    if (axisType == TholeDipoleForce::ZThenX || axisType == TholeDipoleForce::Bisector) {
+        double factor1 = dphi[1]/(normU*sinUV);
+        double factor2 = dphi[2]/normU;
+        double factor3 = -dphi[0]/(normV*sinUV);
+        double factor4;
+
+        if (axisType == TholeDipoleForce::Bisector) {
+            factor2 *= 0.5;
+            factor4 = 0.5*dphi[2]/normV;
+        } else {
+            factor4 = 0.0;
+        }
+
+        for (int i = 0; i < 3; i++) {
+            double forceU = vectorUV[i]*factor1 + factor2*vectorUW[i];
+            forces[particleU.particleIndex][i] -= forceU;
+
+            double forceV = vectorUV[i]*factor3 + factor4*vectorVW[i];
+            forces[particleV.particleIndex][i] -= forceV;
+
+            forces[particleI.particleIndex][i] += (forceU + forceV);
+        }
+
+    } else if (axisType == TholeDipoleForce::ZBisect) {
+        Vec3 vectorR = vectorV + vectorW;
+        Vec3 vectorS = vectorU.cross(vectorR);
+
+        double normR = normalizeVec3(vectorR);
+        double normS = normalizeVec3(vectorS);
+
+        Vec3 vectorUR = vectorR.cross(vectorU);
+        Vec3 vectorUS = vectorS.cross(vectorU);
+        Vec3 vectorVS = vectorS.cross(vectorV);
+        Vec3 vectorWS = vectorS.cross(vectorW);
+
+        normalizeVec3(vectorUR);
+        normalizeVec3(vectorUS);
+        normalizeVec3(vectorVS);
+        normalizeVec3(vectorWS);
+
+        double cosUR = vectorU.dot(vectorR);
+        double sinUR = sqrt(1.0 - cosUR*cosUR);
+
+        double cosUS = vectorU.dot(vectorS);
+        double sinUS = sqrt(1.0 - cosUS*cosUS);
+
+        double cosVS = vectorV.dot(vectorS);
+        double sinVS = sqrt(1.0 - cosVS*cosVS);
+
+        double cosWS = vectorW.dot(vectorS);
+        double sinWS = sqrt(1.0 - cosWS*cosWS);
+
+        Vec3 t1 = vectorV - vectorS*cosVS;
+        Vec3 t2 = vectorW - vectorS*cosWS;
+
+        normalizeVec3(t1);
+        normalizeVec3(t2);
+
+        double ut1cos = vectorU.dot(t1);
+        double ut1sin = sqrt(1.0 - ut1cos*ut1cos);
+
+        double ut2cos = vectorU.dot(t2);
+        double ut2sin = sqrt(1.0 - ut2cos*ut2cos);
+
+        double dphiR = vectorR.dot(torque)*(-1.0);
+        double dphiS = vectorS.dot(torque)*(-1.0);
+
+        double factor1 = dphiR/(normU*sinUR);
+        double factor2 = dphiS/normU;
+        double factor3 = dphi[0]/(normV*(ut1sin+ut2sin));
+        double factor4 = dphi[0]/(normW*(ut1sin+ut2sin));
+
+        Vec3 forceU = vectorUR*factor1 + vectorUS*factor2;
+        forces[particleU.particleIndex] -= forceU;
+
+        Vec3 forceV = (vectorS*sinVS - t1*cosVS)*factor3;
+        forces[particleV.particleIndex] -= forceV;
+
+        Vec3 forceW = (vectorS*sinWS - t2*cosWS)*factor4;
+        forces[particleW->particleIndex] -= forceW;
+
+        forces[particleI.particleIndex] += (forceU + forceV + forceW);
+
+    } else if (axisType == TholeDipoleForce::ThreeFold) {
+        // 3-fold symmetry
+        for (int i = 0; i < 3; i++) {
+            double du = vectorUW[i]*dphi[2]/(normU*sinUW) +
+                       vectorUV[i]*dphi[1]/(normU*sinUV) -
+                       vectorUW[i]*dphi[0]/(normU*sinUW) -
+                       vectorUV[i]*dphi[0]/(normU*sinUV);
+
+            double dv = vectorVW[i]*dphi[2]/(normV*sinVW) -
+                       vectorUV[i]*dphi[0]/(normV*sinUV) -
+                       vectorVW[i]*dphi[1]/(normV*sinVW) +
+                       vectorUV[i]*dphi[1]/(normV*sinUV);
+
+            double dw = -vectorUW[i]*dphi[0]/(normW*sinUW) -
+                       vectorVW[i]*dphi[1]/(normW*sinVW) +
+                       vectorUW[i]*dphi[2]/(normW*sinUW) +
+                       vectorVW[i]*dphi[2]/(normW*sinVW);
+
+            du /= 3.0;
+            dv /= 3.0;
+            dw /= 3.0;
+
+            forces[particleU.particleIndex][i] -= du;
+            forces[particleV.particleIndex][i] -= dv;
+            if (particleW)
+                forces[particleW->particleIndex][i] -= dw;
+            forces[particleI.particleIndex][i] += (du + dv + dw);
+        }
+
+    } else if (axisType == TholeDipoleForce::ZOnly) {
+        // Z-only axis
+        for (int i = 0; i < 3; i++) {
+            double du = vectorUV[i]*dphi[1]/(normU*sinUV) + vectorUW[i]*dphi[2]/normU;
+            forces[particleU.particleIndex][i] -= du;
+            forces[particleI.particleIndex][i] += du;
+        }
+    }
+}
+
 void ReferenceTholeDipoleForce::mapTorqueToForce(
     const vector<TholeDipoleParticleData>& particleData,
     const vector<int>& multipoleAtomXs,
@@ -919,18 +1097,22 @@ void ReferenceTholeDipoleForce::mapTorqueToForce(
     const vector<int>& axisTypes,
     vector<Vec3>& torques,
     vector<Vec3>& forces) const {
-    
-    // Convert torques on local coordinate frames to forces
-    for (unsigned int i = 0; i < _numParticles; i++) {
-        if (multipoleAtomZs[i] >= 0 && multipoleAtomZs[i] != i) {
-            // This particle has a local coordinate system
-            // The torque conversion would go here
-            // For now, this is a placeholder
+
+    // Map torques to forces
+    for (unsigned int ii = 0; ii < particleData.size(); ii++) {
+        if (axisTypes[ii] != TholeDipoleForce::NoAxisType) {
+            mapTorqueToForceForParticle(
+                particleData[ii],
+                particleData[multipoleAtomZs[ii]],
+                particleData[multipoleAtomXs[ii]],
+                multipoleAtomYs[ii] > -1 ? &particleData[multipoleAtomYs[ii]] : NULL,
+                axisTypes[ii],
+                torques[ii],
+                forces
+            );
         }
     }
 }
-
-
 
 void ReferenceTholeDipoleForce::setup(
     const vector<Vec3>& particlePositions,

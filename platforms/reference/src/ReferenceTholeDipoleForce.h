@@ -577,7 +577,7 @@ protected:
                      const std::vector<int>& multipoleAtomZs,
                      const std::vector<int>& axisTypes) const;
 
-    void normalizeVec3(Vec3& vector) const;
+    double normalizeVec3(Vec3& vector) const;
 
     void applyRotationMatrixToParticle(TholeDipoleParticleData& particleI,
                                        const TholeDipoleParticleData* particleZ,
@@ -614,6 +614,14 @@ protected:
                           const std::vector<int>& axisTypes,
                           std::vector<Vec3>& torques,
                           std::vector<Vec3>& forces) const;
+
+    void mapTorqueToForceForParticle(const TholeDipoleParticleData& particleI,
+                                     const TholeDipoleParticleData& particleZ,
+                                     const TholeDipoleParticleData& particleX,
+                                     const TholeDipoleParticleData* particleY,
+                                     int axisType,
+                                     const Vec3& torque,
+                                     std::vector<Vec3>& forces) const;
 
     double calculateElectrostaticPotentialForParticleGridPoint(const TholeDipoleParticleData& particleI, const Vec3& gridPoint) const;
 };
