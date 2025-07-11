@@ -2,16 +2,31 @@
 # Testing
 #
 
-# Automatically create tests using files named "Test*.cpp"
-FILE(GLOB TEST_PROGS "*Test*.cpp")
-FOREACH(TEST_PROG ${TEST_PROGS})
-    GET_FILENAME_COMPONENT(TEST_ROOT ${TEST_PROG} NAME_WE)
+# Create individual tests for each test function
+SET(INDIVIDUAL_TESTS
+    TholeDipoleAmmoniaDirectPolarization
+    TholeDipoleAmmoniaMutualPolarization
+    TholeDipoleWaterPMEDirectPolarization
+    TholeDipoleWaterPMEMutualPolarization
+    ParticleInducedDipoles
+    ParticleLabFramePermanentDipoles
+    ParticleTotalDipoles
+    Triclinic
+    ZBisect
+    ZOnly
+    NeutralizingPlasmaCorrection
+)
 
-    # Link with shared library
+FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})
+    ADD_EXECUTABLE(Test${TEST_NAME} TestReferenceTholeDipoleForce.cpp)
+    TARGET_COMPILE_DEFINITIONS(Test${TEST_NAME} PRIVATE RUN_ONLY_${TEST_NAME})
+    TARGET_LINK_LIBRARIES(Test${TEST_NAME} ${SHARED_TARGET})
+    SET_TARGET_PROPERTIES(Test${TEST_NAME} PROPERTIES LINK_FLAGS "${EXTRA_COMPILE_FLAGS}" COMPILE_FLAGS "${EXTRA_COMPILE_FLAGS}")
+    ADD_TEST(${TEST_NAME} ${EXECUTABLE_OUTPUT_PATH}/Test${TEST_NAME})
+ENDFOREACH(TEST_NAME ${INDIVIDUAL_TESTS})
 
-    ADD_EXECUTABLE(${TEST_ROOT} ${TEST_PROG})
-    TARGET_LINK_LIBRARIES(${TEST_ROOT} ${SHARED_TARGET})
-    SET_TARGET_PROPERTIES(${TEST_ROOT} PROPERTIES LINK_FLAGS "${EXTRA_COMPILE_FLAGS}" COMPILE_FLAGS "${EXTRA_COMPILE_FLAGS}")
-    ADD_TEST(${TEST_ROOT} ${EXECUTABLE_OUTPUT_PATH}/${TEST_ROOT})
-    
-ENDFOREACH(TEST_PROG ${TEST_PROGS})
+# Also keep the original test that runs all tests
+ADD_EXECUTABLE(TestReferenceTholeDipoleForceAll TestReferenceTholeDipoleForce.cpp)
+TARGET_LINK_LIBRARIES(TestReferenceTholeDipoleForceAll ${SHARED_TARGET})
+SET_TARGET_PROPERTIES(TestReferenceTholeDipoleForceAll PROPERTIES LINK_FLAGS "${EXTRA_COMPILE_FLAGS}" COMPILE_FLAGS "${EXTRA_COMPILE_FLAGS}")
+ADD_TEST(AllTests ${EXECUTABLE_OUTPUT_PATH}/TestReferenceTholeDipoleForceAll)

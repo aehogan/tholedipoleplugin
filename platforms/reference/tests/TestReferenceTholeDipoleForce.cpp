@@ -804,12 +804,33 @@ int main(int argc, char* argv[]) {
     try {
         setupKernels(argc, argv);
 
-        // tests using two ammonia molecules
-
-        // test direct polarization, no cutoff
+#ifdef RUN_ONLY_TholeDipoleAmmoniaDirectPolarization
         testTholeDipoleAmmoniaDirectPolarization();
-
-        // test mutual polarization, no cutoff
+#elif defined(RUN_ONLY_TholeDipoleAmmoniaMutualPolarization)
+        testTholeDipoleAmmoniaMutualPolarization();
+#elif defined(RUN_ONLY_TholeDipoleWaterPMEDirectPolarization)
+        testTholeDipoleWaterPMEDirectPolarization();
+#elif defined(RUN_ONLY_TholeDipoleWaterPMEMutualPolarization)
+        testTholeDipoleWaterPMEMutualPolarization();
+#elif defined(RUN_ONLY_ParticleInducedDipoles)
+        testParticleInducedDipoles();
+#elif defined(RUN_ONLY_ParticleLabFramePermanentDipoles)
+        testParticleLabFramePermanentDipoles();
+#elif defined(RUN_ONLY_ParticleTotalDipoles)
+        testParticleTotalDipoles();
+#elif defined(RUN_ONLY_Triclinic)
+        testTriclinic();
+#elif defined(RUN_ONLY_ZBisect)
+        testZBisect();
+#elif defined(RUN_ONLY_ZOnly)
+        testZOnly();
+#elif defined(RUN_ONLY_NeutralizingPlasmaCorrection)
+        testNeutralizingPlasmaCorrection();
+#else
+        // Run all tests (default behavior when no specific test is defined)
+        
+        // tests using two ammonia molecules
+        testTholeDipoleAmmoniaDirectPolarization();
         testTholeDipoleAmmoniaMutualPolarization();
 
         // test thole dipole direct & mutual polarization using PME
@@ -838,6 +859,7 @@ int main(int argc, char* argv[]) {
         testNeutralizingPlasmaCorrection();
 
         runPlatformTests();
+#endif
     }
     catch (const std::exception& e) {
         std::cout << "exception: " << e.what() << std::endl;
