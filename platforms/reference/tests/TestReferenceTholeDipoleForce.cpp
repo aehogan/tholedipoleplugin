@@ -721,9 +721,9 @@ void testZOnly() {
     d[0] = 0.05;
     d[1] = -0.05;
     d[2] = 0.1;
-    force->addParticle(0.0, d, 0.001, 0.39, TholeDipoleForce::ZOnly, 1, 0, 0);
+    force->addParticle(0.0, d, 0.001, 0.39, TholeDipoleForce::ZOnly, 1, -1, -1);
     force->addParticle(0.0, d, 0.001, 0.39, TholeDipoleForce::Bisector, 0, 2, 0);
-    force->addParticle(0.0, d, 0.001, 0.39, TholeDipoleForce::ZOnly, 1, 0, 0);
+    force->addParticle(0.0, d, 0.001, 0.39, TholeDipoleForce::ZOnly, 1, -1, -1);
     vector<Vec3> positions(3);
     positions[0] = Vec3(0, 0, 0);
     positions[1] = Vec3(0.2, 0, 0);
@@ -756,6 +756,57 @@ void testZOnly() {
     context.setPositions(positions3);
     State state3 = context.getState(State::Energy);
     ASSERT_EQUAL_TOL(state2.getPotentialEnergy(), state3.getPotentialEnergy()+norm*delta, 1e-3)
+}
+
+void testZOnlySimple() {
+    System system;
+    system.addParticle(1.0);
+    system.addParticle(1.0);
+    
+    TholeDipoleForce* force = new TholeDipoleForce();
+    system.addForce(force);
+    
+    // Simple dipole along z
+    vector<double> d1(3);
+    d1[0] = 0.0;
+    d1[1] = 0.0; 
+    d1[2] = 0.1;
+    
+    vector<double> d2(3);
+    d2[0] = 0.0;
+    d2[1] = 0.0;
+    d2[2] = 0.0;
+    
+    // Particle 0: ZOnly with particle 1 as Z-axis
+    // For ZOnly, atomX and atomY should be -1 (not used) or different particles
+    force->addParticle(0.5, d1, 0.001, 0.39, TholeDipoleForce::ZOnly, 1, -1, -1);
+    // Particle 1: No axis type (just a reference point)
+    force->addParticle(-0.5, d2, 0.001, 0.39, TholeDipoleForce::NoAxisType, -1, -1, -1);
+    
+    vector<Vec3> positions(2);
+    positions[0] = Vec3(0, 0, 0);
+    positions[1] = Vec3(0, 0, 0.3);  // Along z-axis
+    
+    LangevinIntegrator integrator(0.0, 0.1, 0.01);
+    Context context(system, integrator, *platform);
+    context.setPositions(positions);
+    
+    State state = context.getState(State::Forces | State::Energy);
+    
+    // Print forces and energy
+    printf("ZOnly Simple Test:\n");
+    printf("Energy: %.8f\n", state.getPotentialEnergy());
+    for (int i = 0; i < 2; i++) {
+        Vec3 f = state.getForces()[i];
+        printf("Force[%d]: (%.6e, %.6e, %.6e)\n", i, f[0], f[1], f[2]);
+    }
+    
+    // For a dipole along Z interacting with a charge along Z,
+    // forces should be purely along Z (no x,y components)
+    ASSERT(fabs(state.getForces()[0][0]) < 1e-10);
+    ASSERT(fabs(state.getForces()[0][1]) < 1e-10);
+    ASSERT(fabs(state.getForces()[1][0]) < 1e-10);
+    ASSERT(fabs(state.getForces()[1][1]) < 1e-10);
 }
 
 void testNeutralizingPlasmaCorrection() {
@@ -824,6 +875,8 @@ int main(int argc, char* argv[]) {
         testZBisect();
 #elif defined(RUN_ONLY_ZOnly)
         testZOnly();
+#elif defined(RUN_ONLY_ZOnlySimple)
+        testZOnlySimple();
 #elif defined(RUN_ONLY_NeutralizingPlasmaCorrection)
         testNeutralizingPlasmaCorrection();
 #else
@@ -854,6 +907,9 @@ int main(int argc, char* argv[]) {
         
         // test the ZOnly axis type.
         testZOnly();
+        
+        // test ZOnly with simpler setup
+        testZOnlySimple();
         
         // test neutralizing plasma correction
         testNeutralizingPlasmaCorrection();

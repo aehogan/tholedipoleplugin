@@ -14,6 +14,7 @@ SET(INDIVIDUAL_TESTS
     Triclinic
     ZBisect
     ZOnly
+    ZOnlySimple
     NeutralizingPlasmaCorrection
 )
 
