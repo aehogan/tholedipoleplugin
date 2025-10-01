@@ -585,16 +585,6 @@ protected:
                                        const TholeDipoleParticleData* particleY,
                                        int axisType) const;
 
-    void formQIRotationMatrix(const Vec3& iPosition,
-                              const Vec3& jPosition,
-                              const Vec3& deltaR,
-                              double r,
-                              double (&rotationMatrix)[3][3]) const;
-
-    void getAndScaleInverseRs(double dampI, double dampJ,
-                              double tholeI, double tholeJ,
-                              double r, std::vector<double>& rrI) const;
-
     void calculateInducedDipolePairIxn(unsigned int particleI,
                                        unsigned int particleJ,
                                        double rr3,

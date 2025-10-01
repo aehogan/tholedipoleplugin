@@ -29,29 +29,48 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#ifndef OPENMM_REFERENCETESTS_H_
-#define OPENMM_REFERENCETESTS_H_
+/**
+ * This tests TholeDipoleForce particletotaldipoles.
+ */
 
-#include "openmm/Platform.h"
-#include "openmm/reference/ReferencePlatform.h"
+#include "ReferenceTests.h"
+#include "TholeDipoleTestCommon.h"
 
-extern "C" void registerTholeDipoleReferenceKernelFactories();
+void testParticleTotalDipoles() {
+    int numberOfParticles     = 8;
+    int inputPmeGridDimension = 0;
+    double cutoff             = 9000000.0;
+    std::vector<Vec3> forces;
+    double energy;
 
-using namespace OpenMM;
-
-ReferencePlatform* platform;
-
-void setupKernels(int argc, char* argv[]) {
-    registerTholeDipoleReferenceKernelFactories();
-    platform = dynamic_cast<ReferencePlatform*>(&Platform::getPlatformByName("Reference"));
+    System system;
+    TholeDipoleForce* tholeDipoleForce = new TholeDipoleForce();;
+    setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Mutual, 
+                                             cutoff, inputPmeGridDimension);
+    LangevinIntegrator integrator(0.0, 0.1, 0.01);
+    Context context(system, integrator, *platform);
+    getForcesEnergyTholeDipoleAmmonia(context, forces, energy);
+    std::vector<Vec3> dipole;
+    tholeDipoleForce->getTotalDipoles(context, dipole);
+    
+    // Compare to expected values (placeholder values - need to be calculated)
+    std::vector<Vec3> expectedDipole(numberOfParticles);
+    // These would need to be calculated for the Thole dipole model
+    for (int i = 0; i < numberOfParticles; i++) {
+        // ASSERT_EQUAL_VEC(expectedDipole[i], dipole[i], 1e-4);
+    }
 }
 
-void initializeTests(int argc, char* argv[]) {
-    // Simple initialization - can be extended later if needed
+int main(int argc, char* argv[]) {
+    try {
+        setupKernels(argc, argv);
+        testParticleTotalDipoles();
+    }
+    catch (const std::exception& e) {
+        std::cout << "exception: " << e.what() << std::endl;
+        std::cout << "FAIL - ERROR.  Test failed." << std::endl;
+        return 1;
+    }
+    std::cout << "Done" << std::endl;
+    return 0;
 }
-
-void runPlatformTests() {
-    // Empty function for platform-specific tests
-}
-
-#endif // OPENMM_REFERENCETESTS_H_

@@ -29,29 +29,65 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
  * -------------------------------------------------------------------------- */
 
-#ifndef OPENMM_REFERENCETESTS_H_
-#define OPENMM_REFERENCETESTS_H_
+/**
+ * This tests TholeDipoleForce neutralizingplasmacorrection.
+ */
 
-#include "openmm/Platform.h"
-#include "openmm/reference/ReferencePlatform.h"
+#include "ReferenceTests.h"
+#include "TholeDipoleTestCommon.h"
 
-extern "C" void registerTholeDipoleReferenceKernelFactories();
+void testNeutralizingPlasmaCorrection() {
+    // Verify that the energy of a system with nonzero charge doesn't depend on alpha.
 
-using namespace OpenMM;
+    System system;
+    TholeDipoleForce* force = new TholeDipoleForce();
+    force->setNonbondedMethod(TholeDipoleForce::PME);
+    system.addForce(force);
+    vector<double> d(3, 0.0);
+    for (int i = 0; i < 2; i++) {
+        system.addParticle(1.0);
+        force->addParticle(1.0, d, 0.001, 0.39, TholeDipoleForce::NoAxisType, 0, 0, 0);
+    }
+    vector<Vec3> positions(2);
+    positions[0] = Vec3();
+    positions[1] = Vec3(0.3, 0.4, 0.0);
 
-ReferencePlatform* platform;
+    // Compute the energy.
 
-void setupKernels(int argc, char* argv[]) {
-    registerTholeDipoleReferenceKernelFactories();
-    platform = dynamic_cast<ReferencePlatform*>(&Platform::getPlatformByName("Reference"));
+    LangevinIntegrator integrator(0.0, 0.1, 0.01);
+    Context context(system, integrator, *platform);
+    context.setPositions(positions);
+    double energy1 = context.getState(State::Energy).getPotentialEnergy();
+
+    // Change the cutoff distance, which will change alpha, and see if the energy is the same.
+
+    force->setCutoffDistance(0.7);
+    context.reinitialize(true);
+    double energy2 = context.getState(State::Energy).getPotentialEnergy();
+    ASSERT_EQUAL_TOL(energy1, energy2, 1e-4);
+
+    // Try changing a particle charge with updateParametersInContext() and make sure the
+    // energy changes by the correct amount.
+
+    force->setParticleParameters(0, 2.0, d, 0.001, 0.39, TholeDipoleForce::NoAxisType, 0, 0, 0);
+    force->updateParametersInContext(context);
+    double energy3 = context.getState(State::Energy).getPotentialEnergy();
+    force->setCutoffDistance(1.0);
+    context.reinitialize(true);
+    double energy4 = context.getState(State::Energy).getPotentialEnergy();
+    ASSERT_EQUAL_TOL(energy3, energy4, 1e-4);
 }
 
-void initializeTests(int argc, char* argv[]) {
-    // Simple initialization - can be extended later if needed
+int main(int argc, char* argv[]) {
+    try {
+        setupKernels(argc, argv);
+        testNeutralizingPlasmaCorrection();
+    }
+    catch (const std::exception& e) {
+        std::cout << "exception: " << e.what() << std::endl;
+        std::cout << "FAIL - ERROR.  Test failed." << std::endl;
+        return 1;
+    }
+    std::cout << "Done" << std::endl;
+    return 0;
 }
-
-void runPlatformTests() {
-    // Empty function for platform-specific tests
-}
-
-#endif // OPENMM_REFERENCETESTS_H_

@@ -1,5 +1,7 @@
 #include "ReferenceTholeDipoleForce.h"
 #include "openmm/OpenMMException.h"
+#include "openmm/reference/SimTKOpenMMRealType.h"
+#include <iostream>
 
 using namespace TholeDipolePlugin;
 using namespace OpenMM;
@@ -17,7 +19,7 @@ ReferenceTholeDipoleForce::~ReferenceTholeDipoleForce() {
 }
 
 void ReferenceTholeDipoleForce::initialize() {
-    _electric = 1.0;
+    _electric = ONE_4PI_EPS0;
     _dielectric = 1.0;
     _mutualInducedDipoleTargetEpsilon = 1.0e-03;
     _maximumMutualInducedDipoleIterations = 60;
@@ -26,25 +28,24 @@ void ReferenceTholeDipoleForce::initialize() {
     _mutualInducedDipoleIterations = 0;
     _debye = 0.4803;
 
-    // Initialize scale factors
+
     _scaleMaps.resize(LAST_SCALE_TYPE_INDEX);
     _maxScaleIndex.resize(LAST_SCALE_TYPE_INDEX);
     for (int i = 0; i < LAST_SCALE_TYPE_INDEX; i++) {
         _maxScaleIndex[i] = 5;
     }
 
-    // Set default scale factors
-    _mScale[0] = 0.0; // 1-1 excluded
-    _mScale[1] = 0.0; // 1-2 excluded
-    _mScale[2] = 0.0; // 1-3 excluded
-    _mScale[3] = 0.5; // 1-4 scaled
-    _mScale[4] = 1.0; // 1-5+ full
+    _mScale[0] = 0.0; // Covalent12 (1-2) excluded
+    _mScale[1] = 0.0; // Covalent13 (1-3) excluded
+    _mScale[2] = 0.5; // Covalent14 (1-4) scaled
+    _mScale[3] = 1.0; // Covalent15 (1-5+) full
+    _mScale[4] = 1.0; // Guard
 
-    _iScale[0] = 0.0; // 1-1 excluded
-    _iScale[1] = 1.0; // 1-2+ full
-    _iScale[2] = 1.0;
-    _iScale[3] = 1.0;
-    _iScale[4] = 1.0;
+    _iScale[0] = 1.0; // Covalent12
+    _iScale[1] = 1.0; // Covalent13
+    _iScale[2] = 1.0; // Covalent14
+    _iScale[3] = 1.0; // Covalent15
+    _iScale[4] = 1.0; // Guard
 
     _polarizationType = Direct;
 }
@@ -119,11 +120,12 @@ double ReferenceTholeDipoleForce::calculateForceAndEnergy(const vector<Vec3>& pa
     initializeVec3Vector(torques);
     double energy = calculateElectrostatic(particleData, torques, forces);
 
-    // Debug accumulated torques before mapping to forces
-    for (unsigned int i = 0; i < std::min((size_t)6, particleData.size()); i++) {
-        if (torques[i][0] != 0.0 || torques[i][1] != 0.0 || torques[i][2] != 0.0) {
-            printf("DEBUG Input Torque: particle %d = (%.6f, %.6f, %.6f)\n", 
-                   i, torques[i][0], torques[i][1], torques[i][2]);
+    // Add self-energy terms for polarization
+    const double scale_factor = _electric / _dielectric;
+    for (unsigned int i = 0; i < _numParticles; i++) {
+        if (particleData[i].polarizability > 0.0) {
+            double mu2 = _inducedDipole[i].dot(_inducedDipole[i]);
+            energy += 0.5 * scale_factor * mu2 / particleData[i].polarizability;
         }
     }
 
@@ -141,339 +143,155 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     double iScale,
     vector<Vec3>& forces,
     vector<Vec3>& torques) const {
-    
-    unsigned int iIndex = particleI.particleIndex;
-    unsigned int kIndex = particleK.particleIndex;
-    
+
+    const int iIndex = particleI.particleIndex;
+    const int kIndex = particleK.particleIndex;
+
     Vec3 deltaR = particleK.position - particleI.position;
     getPeriodicDelta(deltaR);
-    double r2 = deltaR.dot(deltaR);
-    double r = sqrt(r2);
-    
-    // Build rotation matrix to transform dipoles to QI frame
-    double qiRotationMatrix[3][3];
-    formQIRotationMatrix(particleI.position, particleK.position, deltaR, r, qiRotationMatrix);
-    
-    // Debug rotation matrix for small systems
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG Rotation Matrix: particles %d-%d, r=%.6f\n", iIndex, kIndex, r);
-        printf("  deltaR: [%.6f, %.6f, %.6f]\n", deltaR[0], deltaR[1], deltaR[2]);
-        printf("  qiRotationMatrix:\n");
-        for (int i = 0; i < 3; i++) {
-            printf("    [%.6f, %.6f, %.6f]\n", qiRotationMatrix[i][0], qiRotationMatrix[i][1], qiRotationMatrix[i][2]);
-        }
-    }
-    
-    // Force rotation matrix transforms QI forces back to lab frame
-    double forceRotationMatrix[3][3];
-    forceRotationMatrix[0][0] = qiRotationMatrix[1][1];
-    forceRotationMatrix[0][1] = qiRotationMatrix[2][1];
-    forceRotationMatrix[0][2] = qiRotationMatrix[0][1];
-    forceRotationMatrix[1][0] = qiRotationMatrix[1][2];
-    forceRotationMatrix[1][1] = qiRotationMatrix[2][2];
-    forceRotationMatrix[1][2] = qiRotationMatrix[0][2];
-    forceRotationMatrix[2][0] = qiRotationMatrix[1][0];
-    forceRotationMatrix[2][1] = qiRotationMatrix[2][0];
-    forceRotationMatrix[2][2] = qiRotationMatrix[0][0];
-    
-    // Rotate induced dipoles to QI frame
-    double qiUindI[3], qiUindJ[3];
-    
-    // Debug lab frame induced dipoles for small systems
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG Lab Frame Induced Dipoles: particles %d-%d\n", iIndex, kIndex);
-        printf("  _inducedDipole[%d]: [%.6f, %.6f, %.6f]\n", iIndex, 
-               _inducedDipole[iIndex][0], _inducedDipole[iIndex][1], _inducedDipole[iIndex][2]);
-        printf("  _inducedDipole[%d]: [%.6f, %.6f, %.6f]\n", kIndex,
-               _inducedDipole[kIndex][0], _inducedDipole[kIndex][1], _inducedDipole[kIndex][2]);
-    }
-    
-    for (int i = 0; i < 3; i++) {
-        qiUindI[i] = 0.0;
-        qiUindJ[i] = 0.0;
-        for (int j = 0; j < 3; j++) {
-            qiUindI[i] += qiRotationMatrix[i][j] * _inducedDipole[iIndex][j];
-            qiUindJ[i] += qiRotationMatrix[i][j] * _inducedDipole[kIndex][j];
-        }
-    }
-    
-    // Debug QI frame induced dipoles for small systems
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG QI Frame Induced Dipoles: particles %d-%d\n", iIndex, kIndex);
-        printf("  qiUindI: [%.6f, %.6f, %.6f]\n", qiUindI[0], qiUindI[1], qiUindI[2]);
-        printf("  qiUindJ: [%.6f, %.6f, %.6f]\n", qiUindJ[0], qiUindJ[1], qiUindJ[2]);
-    }
-    
-    // QI frame multipoles for atoms I and J
-    double qiQI[4], qiQJ[4];
-    qiQI[0] = particleI.charge;
-    qiQJ[0] = particleK.charge;
-    
-    // Debug lab frame dipoles for small systems
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG Lab Frame Dipoles: particles %d-%d\n", iIndex, kIndex);
-        printf("  particleI.dipole: [%.6f, %.6f, %.6f]\n", particleI.dipole[0], particleI.dipole[1], particleI.dipole[2]);
-        printf("  particleK.dipole: [%.6f, %.6f, %.6f]\n", particleK.dipole[0], particleK.dipole[1], particleK.dipole[2]);
-    }
-    
-    // Rotate permanent dipoles to QI frame
-    for (int i = 0; i < 3; i++) {
-        qiQI[i+1] = 0.0;
-        qiQJ[i+1] = 0.0;
-        for (int j = 0; j < 3; j++) {
-            qiQI[i+1] += qiRotationMatrix[i][j] * particleI.dipole[j];
-            qiQJ[i+1] += qiRotationMatrix[i][j] * particleK.dipole[j];
-        }
-    }
-    
-    // Debug QI frame multipoles for small systems
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG QI Frame Multipoles: particles %d-%d\n", iIndex, kIndex);
-        printf("  qiQI: [%.6f, %.6f, %.6f, %.6f] (charge, dipole_x, dipole_y, dipole_z)\n", 
-               qiQI[0], qiQI[1], qiQI[2], qiQI[3]);
-        printf("  qiQJ: [%.6f, %.6f, %.6f, %.6f] (charge, dipole_x, dipole_y, dipole_z)\n", 
-               qiQJ[0], qiQJ[1], qiQJ[2], qiQJ[3]);
-    }
-    
-    // Torque intermediates for permanent dipoles
-    double qiQIX[4] = {0.0, qiQI[3], 0.0, -qiQI[1]};
-    double qiQIY[4] = {0.0, -qiQI[2], qiQI[1], 0.0};
-    double qiQIZ[4] = {0.0, 0.0, -qiQI[3], qiQI[2]};
-    double qiQJX[4] = {0.0, qiQJ[3], 0.0, -qiQJ[1]};
-    double qiQJY[4] = {0.0, -qiQJ[2], qiQJ[1], 0.0};
-    double qiQJZ[4] = {0.0, 0.0, -qiQJ[3], qiQJ[2]};
+    const double r2 = deltaR.dot(deltaR);
+    if (r2 == 0.0) return 0.0;
+    const double r = sqrt(r2);
+    const double rInv = 1.0 / r;
+    const double rInv2 = rInv * rInv;
+    const double rInv3 = rInv2 * rInv;
+    const double rInv4 = rInv3 * rInv;
 
-    // Debug multipole derivatives for small systems
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG Multipole Derivatives: particles %d-%d\n", iIndex, kIndex);
-        printf("  qiQI input: [%.6f, %.6f, %.6f, %.6f]\n", qiQI[0], qiQI[1], qiQI[2], qiQI[3]);
-        printf("  qiQIX calculated: [%.6f, %.6f, %.6f, %.6f] = [0, qiQI[3], 0, -qiQI[1]]\n", 
-               qiQIX[0], qiQIX[1], qiQIX[2], qiQIX[3]);
-        printf("  Note: qiQIX[1] = qiQI[3] = %.6f (Z-dipole becomes X-derivative of Y-dipole)\n", qiQI[3]);
-    }
-    
-    // Get Thole-damped interaction tensors
-    vector<double> rInvVec(4);
-    double rInv = 1.0 / r;
-    double prefac = _electric / _dielectric;
-    rInvVec[1] = prefac * rInv;
-    for (int i = 2; i < 4; i++) {
-        rInvVec[i] = rInvVec[i-1] * rInv;
-    }
-    
-    // Thole damping parameters
-    double dmp = particleI.tholeDamping * particleK.tholeDamping;
-    double a = particleI.tholeDamping < particleK.tholeDamping ? 
-               particleI.tholeDamping : particleK.tholeDamping;
-    double u = r / dmp;
-    double au3 = fabs(dmp) > 1.0e-5 ? a * u * u * u : 0.0;
-    double expau3 = fabs(dmp) > 1.0e-5 ? exp(-au3) : 0.0;
-    
-    // Thole damping factors for energies
-    double thole_c = 1.0 - expau3;
-    double thole_d0 = 1.0 - expau3 * (1.0 + 1.5 * au3);
-    double thole_d1 = 1.0 - expau3;
-    
-    // Thole damping factors for derivatives
-    double dthole_c = 1.0 - expau3 * (1.0 + 1.5 * au3);
-    double dthole_d0 = 1.0 - expau3 * (1.0 + au3 + 1.5 * au3 * au3);
-    double dthole_d1 = 1.0 - expau3 * (1.0 + au3);
-    
-    // Field derivatives at I due to J and vice versa
-    double Vij[4], Vji[4], VijR[4], VjiR[4];
-    double Vijp[3], Vijd[3], Vjip[3], Vjid[3];
-    
-    // Initialize arrays
-    for (int i = 0; i < 4; i++) {
-        Vij[i] = 0.0; Vji[i] = 0.0; VijR[i] = 0.0; VjiR[i] = 0.0;
-    }
-    for (int i = 0; i < 3; i++) {
-        Vijp[i] = 0.0; Vijd[i] = 0.0; Vjip[i] = 0.0; Vjid[i] = 0.0;
-    }
-    
-    // C-C interaction (m=0)
-    double ePermCoef = rInvVec[1] * mScale;
-    double dPermCoef = -0.5 * mScale * rInvVec[2];
-    Vij[0] = ePermCoef * qiQJ[0];
-    Vji[0] = ePermCoef * qiQI[0];
-    VijR[0] = dPermCoef * qiQJ[0];
-    VjiR[0] = dPermCoef * qiQI[0];
-    
-    // C-D and C-Uind interactions (m=0)
-    ePermCoef = rInvVec[2] * mScale;
-    double eUIndCoef = rInvVec[2] * iScale * thole_c;
-    dPermCoef = -rInvVec[3] * mScale;
-    double dUIndCoef = -2.0 * rInvVec[3] * iScale * dthole_c;
-    
-    Vij[0] += -(ePermCoef * qiQJ[1] + eUIndCoef * qiUindJ[0]);
-    Vji[1] = -(ePermCoef * qiQI[0]);
-    VijR[0] += -(dPermCoef * qiQJ[1] + dUIndCoef * qiUindJ[0]);
-    VjiR[1] = -(dPermCoef * qiQI[0]);
-    Vjid[0] = -(eUIndCoef * qiQI[0]);
-    
-    // D-C and Uind-C interactions (m=0)
-    Vij[1] = ePermCoef * qiQJ[0];
-    
-    // Debug Vij[1] calculation for small systems
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG Vij[1] Calc: particles %d-%d\n", iIndex, kIndex);
-        printf("  Vij[1] = ePermCoef * qiQJ[0] = %.6f * %.6f = %.6f\n", 
-               ePermCoef, qiQJ[0], Vij[1]);
-        printf("  ePermCoef = rInvVec[2] * mScale = %.6f * %.6f = %.6f\n", 
-               rInvVec[2], mScale, ePermCoef);
-        printf("  qiQJ[0] = %.6f (charge of particle J)\n", qiQJ[0]);
-    }
-    
-    Vji[0] += ePermCoef * qiQI[1] + eUIndCoef * qiUindI[0];
-    VijR[1] = dPermCoef * qiQJ[0];
-    VjiR[0] += dPermCoef * qiQI[1] + dUIndCoef * qiUindI[0];
-    Vijd[0] = eUIndCoef * qiQJ[0];
-    
-    // D-D and D-Uind interactions (m=0)
-    ePermCoef = -2.0 * rInvVec[3] * mScale;
-    eUIndCoef = -2.0 * rInvVec[3] * iScale * thole_d0;
-    dPermCoef = 3.0 * rInvVec[4] * mScale;
-    dUIndCoef = 6.0 * rInvVec[4] * iScale * dthole_d0;
-    
-    Vij[1] += ePermCoef * qiQJ[1] + eUIndCoef * qiUindJ[0];
-    Vji[1] += ePermCoef * qiQI[1] + eUIndCoef * qiUindI[0];
-    VijR[1] += dPermCoef * qiQJ[1] + dUIndCoef * qiUindJ[0];
-    VjiR[1] += dPermCoef * qiQI[1] + dUIndCoef * qiUindI[0];
-    Vijd[0] += eUIndCoef * qiQJ[1];
-    Vjid[0] += eUIndCoef * qiQI[1];
-    
-    // D-D and D-Uind interactions (m=1)
-    ePermCoef = rInvVec[3] * mScale;
-    eUIndCoef = rInvVec[3] * iScale * thole_d1;
-    dPermCoef = -1.5 * rInvVec[4] * mScale;
-    dUIndCoef = -3.0 * rInvVec[4] * iScale * dthole_d1;
-    
-    Vij[2] = ePermCoef * qiQJ[2] + eUIndCoef * qiUindJ[1];
-    Vji[2] = ePermCoef * qiQI[2] + eUIndCoef * qiUindI[1];
-    VijR[2] = dPermCoef * qiQJ[2] + dUIndCoef * qiUindJ[1];
-    VjiR[2] = dPermCoef * qiQI[2] + dUIndCoef * qiUindI[1];
-    Vijd[1] = eUIndCoef * qiQJ[2];
-    Vjid[1] = eUIndCoef * qiQI[2];
-    
-    Vij[3] = ePermCoef * qiQJ[3] + eUIndCoef * qiUindJ[2];
-    Vji[3] = ePermCoef * qiQI[3] + eUIndCoef * qiUindI[2];
-    VijR[3] = dPermCoef * qiQJ[3] + dUIndCoef * qiUindJ[2];
-    VjiR[3] = dPermCoef * qiQI[3] + dUIndCoef * qiUindI[2];
-    Vijd[2] = eUIndCoef * qiQJ[3];
-    Vjid[2] = eUIndCoef * qiQI[3];
-    
-    // Calculate energy, forces and torques
-    double energy = 0.5 * (qiQI[0] * Vij[0] + qiQJ[0] * Vji[0]);
-    double fIZ = qiQI[0] * VijR[0];
-    double fJZ = qiQJ[0] * VjiR[0];
-    double EIX = 0.0, EIY = 0.0, EIZ = 0.0;
-    double EJX = 0.0, EJY = 0.0, EJZ = 0.0;
-    
-    for (int i = 1; i < 4; i++) {
-        energy += 0.5 * (qiQI[i] * Vij[i] + qiQJ[i] * Vji[i]);
-        fIZ += qiQI[i] * VijR[i];
-        fJZ += qiQJ[i] * VjiR[i];
-        EIX += qiQIX[i] * Vij[i];
-        EIY += qiQIY[i] * Vij[i];
-        EIZ += qiQIZ[i] * Vij[i];
-        EJX += qiQJX[i] * Vji[i];
-        EJY += qiQJY[i] * Vji[i];
-        EJZ += qiQJZ[i] * Vji[i];
-    }
-    
-    // Induced dipole torques
-    double iEIX = qiUindI[2] * Vijd[0] - qiUindI[0] * Vijd[2];
-    double iEJX = qiUindJ[2] * Vjid[0] - qiUindJ[0] * Vjid[2];
-    double iEIY = qiUindI[0] * Vijd[1] - qiUindI[1] * Vijd[0];
-    double iEJY = qiUindJ[0] * Vjid[1] - qiUindJ[1] * Vjid[0];
-    
-    // Add Uind-Uind interactions for mutual polarization
-    if (_polarizationType == Mutual) {
-        // Uind-Uind (m=0)
-        double eCoef = -4.0 * rInvVec[3] * iScale * thole_d0;
-        double dCoef = 6.0 * rInvVec[4] * iScale * dthole_d0;
-        iEIX += eCoef * qiUindI[2] * qiUindJ[0];
-        iEJX += eCoef * qiUindJ[2] * qiUindI[0];
-        iEIY -= eCoef * qiUindI[1] * qiUindJ[0];
-        iEJY -= eCoef * qiUindJ[1] * qiUindI[0];
-        fIZ += dCoef * qiUindI[0] * qiUindJ[0];
-        fJZ += dCoef * qiUindJ[0] * qiUindI[0];
-        
-        // Uind-Uind (m=1)
-        eCoef = 2.0 * rInvVec[3] * iScale * thole_d1;
-        dCoef = -3.0 * rInvVec[4] * iScale * dthole_d1;
-        iEIX -= eCoef * qiUindI[0] * qiUindJ[2];
-        iEJX -= eCoef * qiUindJ[0] * qiUindI[2];
-        iEIY += eCoef * qiUindI[0] * qiUindJ[1];
-        iEJY += eCoef * qiUindJ[0] * qiUindI[1];
-        fIZ += dCoef * (qiUindI[1] * qiUindJ[1] + qiUindI[2] * qiUindJ[2]);
-        fJZ += dCoef * (qiUindJ[1] * qiUindI[1] + qiUindJ[2] * qiUindI[2]);
-    }
-    
-    // QI frame forces and torques
-    double qiForce[3] = {rInv * (EIY + EJY + iEIY + iEJY), 
-                         -rInv * (EIX + EJX + iEIX + iEJX), 
-                         -(fJZ + fIZ)};
-    double qiTorqueI[3] = {-EIX, -EIY, -EIZ};
-    double qiTorqueJ[3] = {-EJX, -EJY, -EJZ};
-    
-    // Debug torque calculation for small systems
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG Torque Calc: particles %d-%d\n", iIndex, kIndex);
-        printf("  Lab positions: I=(%.6f,%.6f,%.6f), J=(%.6f,%.6f,%.6f)\n", 
-               particleI.position[0], particleI.position[1], particleI.position[2],
-               particleK.position[0], particleK.position[1], particleK.position[2]);
-        printf("  Lab dipoles: I=(%.6f,%.6f,%.6f), J=(%.6f,%.6f,%.6f)\n",
-               particleI.dipole[0], particleI.dipole[1], particleI.dipole[2],
-               particleK.dipole[0], particleK.dipole[1], particleK.dipole[2]);
-        printf("  deltaR=(%.6f,%.6f,%.6f), r=%.6f\n", deltaR[0], deltaR[1], deltaR[2], r);
-        printf("  EIX=%.6f, EIY=%.6f, EIZ=%.6f\n", EIX, EIY, EIZ);
-        printf("  EJX=%.6f, EJY=%.6f, EJZ=%.6f\n", EJX, EJY, EJZ);
-        printf("  qiQI: [%.6f, %.6f, %.6f, %.6f]\n", qiQI[0], qiQI[1], qiQI[2], qiQI[3]);
-        printf("  qiQJ: [%.6f, %.6f, %.6f, %.6f]\n", qiQJ[0], qiQJ[1], qiQJ[2], qiQJ[3]);
-        printf("  qiQIX: [%.6f, %.6f, %.6f, %.6f]\n", qiQIX[0], qiQIX[1], qiQIX[2], qiQIX[3]);
-        printf("  qiQIY: [%.6f, %.6f, %.6f, %.6f]\n", qiQIY[0], qiQIY[1], qiQIY[2], qiQIY[3]);
-        printf("  qiQIZ: [%.6f, %.6f, %.6f, %.6f]\n", qiQIZ[0], qiQIZ[1], qiQIZ[2], qiQIZ[3]);
-        printf("  Vij: [%.6f, %.6f, %.6f, %.6f]\n", Vij[0], Vij[1], Vij[2], Vij[3]);
-        printf("  Vji: [%.6f, %.6f, %.6f, %.6f]\n", Vji[0], Vji[1], Vji[2], Vji[3]);
-        printf("  QI Rotation Matrix:\n");
-        for (int row = 0; row < 3; row++) {
-            printf("    [%.6f, %.6f, %.6f]\n", forceRotationMatrix[row][0], forceRotationMatrix[row][1], forceRotationMatrix[row][2]);
-        }
-    }
-    
-    // Debug QI frame torques before rotation
-    if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-        printf("DEBUG QI Frame Torques: particles %d-%d\n", iIndex, kIndex);
-        printf("  qiTorqueI (QI): (%.6f, %.6f, %.6f)\n", qiTorqueI[0], qiTorqueI[1], qiTorqueI[2]);
-        printf("  qiTorqueJ (QI): (%.6f, %.6f, %.6f)\n", qiTorqueJ[0], qiTorqueJ[1], qiTorqueJ[2]);
+    const Vec3 rhat = deltaR * rInv;  // points from I to K
+
+    const double qi = particleI.charge;
+    const double qk = particleK.charge;
+    const Vec3& mi = particleI.dipole;
+    const Vec3& mk = particleK.dipole;
+    const Vec3& ui = _inducedDipole[iIndex];
+    const Vec3& uk = _inducedDipole[kIndex];
+
+    const double a = particleI.tholeDamping < particleK.tholeDamping ? particleI.tholeDamping : particleK.tholeDamping;
+    const double dampingFactor = pow(particleI.polarizability * particleK.polarizability, 1.0/6.0);
+    const double u = r / dampingFactor;
+    const double au3 = fabs(dampingFactor) > 1.0e-5f ? a * u * u * u : 0.0;
+    const double expau3 = fabs(dampingFactor) > 1.0e-5f ? exp(-au3) : 0.0;
+
+    double damping_factor = 1.0 - expau3;
+    double d_damping_dr = 0.0;
+    if (fabs(dampingFactor) > 1.0e-5f && au3 < 50.0) {
+        d_damping_dr = expau3 * a * 3.0 * u * u / dampingFactor;
     }
 
-    // Rotate forces and torques back to lab frame
-    for (int i = 0; i < 3; i++) {
-        double forceVal = 0.0;
-        double torqueIVal = 0.0;
-        double torqueJVal = 0.0;
-        for (int j = 0; j < 3; j++) {
-            forceVal += forceRotationMatrix[i][j] * qiForce[j];
-            torqueIVal += forceRotationMatrix[i][j] * qiTorqueI[j];
-            torqueJVal += forceRotationMatrix[i][j] * qiTorqueJ[j];
-        }
-        
-        // Debug output for all small systems (first few particles)
-        if ((iIndex <= 2 || kIndex <= 2) && (iIndex <= 5 && kIndex <= 5)) {
-            printf("DEBUG Electrostatic: particles %d-%d, component %d\n", iIndex, kIndex, i);
-            printf("  qiTorqueI: %.6f, qiTorqueJ: %.6f\n", qiTorqueI[i], qiTorqueJ[i]);
-            printf("  torqueIVal: %.6f, torqueJVal: %.6f\n", torqueIVal, torqueJVal);
-        }
-        
-        torques[iIndex][i] += torqueIVal;
-        torques[kIndex][i] += torqueJVal;
-        forces[iIndex][i] -= forceVal;
-        forces[kIndex][i] += forceVal;
-    }
+    double energy = 0.0;
+    Vec3 forceK(0.0, 0.0, 0.0);
+
+    const double mi_dot_rhat = mi.dot(rhat);
+    const double mk_dot_rhat = mk.dot(rhat);
+    const double ui_dot_rhat = ui.dot(rhat);
+    const double uk_dot_rhat = uk.dot(rhat);
+
+    const double mi_dot_mk = mi.dot(mk);
+    const double mi_dot_uk = mi.dot(uk);
+    const double ui_dot_mk = ui.dot(mk);
+    const double ui_dot_uk = ui.dot(uk);
+
+    // Initialize electric fields for torque calculation
+    Vec3 fieldAtI(0.0, 0.0, 0.0);
+    Vec3 fieldAtK(0.0, 0.0, 0.0);
+
+    // --- (1) Charge-Charge (P-P) ---
+    double e_cc = mScale * qi * qk * rInv;
+    Vec3 f_cc = mScale * qi * qk * rInv2 * rhat;
+    energy += e_cc;
+    forceK += f_cc;
     
-    return energy;
+    // Field at I due to charge K: E = -qk * r̂ / r²  (points from K to I, which is -rhat)
+    // Field at K due to charge I: E = qi * r̂ / r²   (points from I to K, which is rhat)
+    fieldAtI -= mScale * qk * rInv2 * rhat;
+    fieldAtK += mScale * qi * rInv2 * rhat;
+
+    // --- (2) Charge-Dipole (P-P) ---
+    Vec3 f_cd = mScale * (
+        qk * (3.0 * mi_dot_rhat * rhat - mi) * rInv3
+        - qi * (3.0 * mk_dot_rhat * rhat - mk) * rInv3
+    );
+    double e_cd = mScale * (qk * mi_dot_rhat - qi * mk_dot_rhat) * rInv2;
+    energy += e_cd;
+    forceK += f_cd;
+
+    // --- (3) Dipole-Dipole (P-P) ---
+    Vec3 f_dd = mScale * rInv4 * (
+        3.0 * (mi_dot_rhat * mk + mk_dot_rhat * mi + mi_dot_mk * rhat)
+        - 15.0 * mi_dot_rhat * mk_dot_rhat * rhat
+    );
+    double e_dd = mScale * (mi_dot_mk - 3.0 * mi_dot_rhat * mk_dot_rhat) * rInv3;
+    energy += e_dd;
+    forceK += f_dd;
+    
+    // Field at I due to dipole K: E = [3(mk·(-r̂))(-r̂) - mk] / r³ = [3(mk·r̂)r̂ - mk] / r³
+    // Field at K due to dipole I: E = [3(mi·r̂)r̂ - mi] / r³
+    fieldAtI += mScale * (3.0 * mk_dot_rhat * rhat - mk) * rInv3;
+    fieldAtK += mScale * (3.0 * mi_dot_rhat * rhat - mi) * rInv3;
+
+    // --- Interactions involving Induced Dipoles ---
+    if (fabs(iScale) > 0) {
+        // --- (4) Charge-Induced Dipole (P-I) ---
+        Vec3 f_ci = -iScale * (
+            qi * (3.0 * uk_dot_rhat * rhat - uk) * rInv3
+            - qk * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
+        );
+        double e_ci = -iScale * (qi * uk_dot_rhat - qk * ui_dot_rhat) * rInv2;
+        energy += e_ci;
+        forceK += f_ci;
+
+        // --- (5) Permanent Dipole-Induced Dipole (P-I) ---
+        Vec3 f_di = iScale * rInv4 * (
+            3.0 * (mi_dot_rhat * uk + uk_dot_rhat * mi + mi_dot_uk * rhat)
+            - 15.0 * mi_dot_rhat * uk_dot_rhat * rhat
+            + 3.0 * (mk_dot_rhat * ui + ui_dot_rhat * mk + ui_dot_mk * rhat)
+            - 15.0 * mk_dot_rhat * ui_dot_rhat * rhat
+        );
+        double e_di = iScale * (
+            (mi_dot_uk + ui_dot_mk) * rInv3
+            - 3.0 * (mi_dot_rhat * uk_dot_rhat + ui_dot_rhat * mk_dot_rhat) * rInv3
+        );
+        energy += e_di;
+        forceK += f_di;
+        
+        // Add induced dipole contributions to fields
+        fieldAtI += iScale * (3.0 * uk_dot_rhat * rhat - uk) * rInv3;
+        fieldAtK += iScale * (3.0 * ui_dot_rhat * rhat - ui) * rInv3;
+
+        // --- (6) Induced Dipole-Induced Dipole (I-I) ---
+        if (_polarizationType == Mutual && particleI.polarizability > 0 && particleK.polarizability > 0) {
+            const double undamped_energy_numerator = ui_dot_uk - 3.0 * ui_dot_rhat * uk_dot_rhat;
+            double e_ii = iScale * damping_factor * undamped_energy_numerator * rInv3;
+            
+            Vec3 f_ii = iScale * damping_factor * rInv4 * (
+                3.0 * (ui_dot_rhat * uk + uk_dot_rhat * ui + ui_dot_uk * rhat)
+                - 15.0 * ui_dot_rhat * uk_dot_rhat * rhat
+            );
+            
+            Vec3 f_ii_damping = -iScale * d_damping_dr * undamped_energy_numerator * rInv3 * rhat;
+            
+            f_ii = f_ii + f_ii_damping;
+            energy += e_ii;
+            forceK += f_ii;
+        }
+    }
+
+    // Calculate torques as τ = μ × E
+    // These are the torques on the permanent dipoles due to the electric fields
+    Vec3 torqueI = mi.cross(fieldAtI);
+    Vec3 torqueK = mk.cross(fieldAtK);
+
+    const double energyTotal = _electric * energy / _dielectric;
+    const Vec3 forceTotal = _electric * forceK / _dielectric;
+    const Vec3 torqueITotal = _electric * torqueI / _dielectric;
+    const Vec3 torqueKTotal = _electric * torqueK / _dielectric;
+
+    forces[iIndex] -= forceTotal;
+    forces[kIndex] += forceTotal;
+    torques[iIndex] += torqueITotal;
+    torques[kIndex] += torqueKTotal;
+
+    return energyTotal;
 }
 
 double ReferenceTholeDipoleForce::calculateElectrostatic(
@@ -579,7 +397,7 @@ void ReferenceTholeDipoleForce::checkChiral(vector<TholeDipoleParticleData>& par
 
 double ReferenceTholeDipoleForce::normalizeVec3(Vec3& vector) const {
     double norm = sqrt(vector.dot(vector));
-    if (norm > 0.0) {
+    if (norm > 1e-12) {
         vector *= (1.0/norm);
     }
     return norm;
@@ -591,6 +409,12 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
     const TholeDipoleParticleData* particleX,
     const TholeDipoleParticleData* particleY,
     int axisType) const {
+    
+    // Debug output for small systems
+    if (particleI.particleIndex <= 5) {
+        printf("  Particle %d: Original dipole (%.6f, %.6f, %.6f), axisType=%d\n", 
+               particleI.particleIndex, particleI.dipole[0], particleI.dipole[1], particleI.dipole[2], axisType);
+    }
     
     // Get the z-axis vector
     Vec3 vectorZ = particleZ->position - particleI.position;
@@ -605,14 +429,6 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
             vectorX = Vec3(1.0, 0.0, 0.0);
         } else {
             vectorX = Vec3(0.0, 1.0, 0.0);
-        }
-        
-        // Debug output for axis setup
-        if (particleI.particleIndex <= 5) {
-            printf("DEBUG Axis Setup: particle %d, axisType %d (ZOnly)\n", particleI.particleIndex, axisType);
-            printf("  Original dipole: (%.6f, %.6f, %.6f)\n", particleI.dipole[0], particleI.dipole[1], particleI.dipole[2]);
-            printf("  Z-axis vector: (%.6f, %.6f, %.6f)\n", vectorZ[0], vectorZ[1], vectorZ[2]);
-            printf("  Final X-axis: (%.6f, %.6f, %.6f)\n", vectorX[0], vectorX[1], vectorX[2]);
         }
         
     } else {
@@ -648,13 +464,11 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
     // y-axis is the cross product of z and x
     vectorY = vectorZ.cross(vectorX);
     
-    // Debug output for all axis types
-    if (particleI.particleIndex <= 5 && axisType != TholeDipoleForce::ZOnly) {
-        printf("DEBUG Axis Setup: particle %d, axisType %d\n", particleI.particleIndex, axisType);
-        printf("  Original dipole: (%.6f, %.6f, %.6f)\n", particleI.dipole[0], particleI.dipole[1], particleI.dipole[2]);
-        printf("  Final X-axis: (%.6f, %.6f, %.6f)\n", vectorX[0], vectorX[1], vectorX[2]);
-        printf("  Final Y-axis: (%.6f, %.6f, %.6f)\n", vectorY[0], vectorY[1], vectorY[2]);
-        printf("  Final Z-axis: (%.6f, %.6f, %.6f)\n", vectorZ[0], vectorZ[1], vectorZ[2]);
+    // Debug output for small systems
+    if (particleI.particleIndex <= 5) {
+        printf("    vectorX: (%.6f, %.6f, %.6f)\n", vectorX[0], vectorX[1], vectorX[2]);
+        printf("    vectorY: (%.6f, %.6f, %.6f)\n", vectorY[0], vectorY[1], vectorY[2]);
+        printf("    vectorZ: (%.6f, %.6f, %.6f)\n", vectorZ[0], vectorZ[1], vectorZ[2]);
     }
     
     // Build rotation matrix (each row is a basis vector)
@@ -705,65 +519,27 @@ void ReferenceTholeDipoleForce::applyRotationMatrix(
     }
 }
 
-void ReferenceTholeDipoleForce::formQIRotationMatrix(
-    const Vec3& iPosition,
-    const Vec3& jPosition,
-    const Vec3& deltaR,
-    double r,
-    double (&rotationMatrix)[3][3]) const {
-    
-    Vec3 vectorZ = deltaR / r;
-    Vec3 vectorX(vectorZ);
-    
-    // Choose an arbitrary vector not parallel to vectorZ
-    if ((iPosition[1] != jPosition[1]) || (iPosition[2] != jPosition[2])) {
-        vectorX[0] += 1.0;
-    } else {
-        vectorX[1] += 1.0;
-    }
-    
-    // Orthogonalize and normalize
-    double dot = vectorZ.dot(vectorX);
-    vectorX -= vectorZ * dot;
-    normalizeVec3(vectorX);
-    
-    Vec3 vectorY = vectorZ.cross(vectorX);
-    
-    // Build rotation matrix
-    rotationMatrix[0][0] = vectorX[0];
-    rotationMatrix[0][1] = vectorX[1];
-    rotationMatrix[0][2] = vectorX[2];
-    rotationMatrix[1][0] = vectorY[0];
-    rotationMatrix[1][1] = vectorY[1];
-    rotationMatrix[1][2] = vectorY[2];
-    rotationMatrix[2][0] = vectorZ[0];
-    rotationMatrix[2][1] = vectorZ[1];
-    rotationMatrix[2][2] = vectorZ[2];
-}
-
 void ReferenceTholeDipoleForce::setupScaleMaps(const vector<vector<vector<int>>>& multipoleCovalentInfo) {
     _scaleMaps[M_SCALE].resize(_numParticles);
     _scaleMaps[I_SCALE].resize(_numParticles);
-    _maxScaleIndex.resize(_numParticles);
-    
+    _maxScaleIndex.resize(_numParticles, 0);
+
     for (unsigned int i = 0; i < _numParticles; i++) {
-        _maxScaleIndex[i] = 0;
-        
-        // Process covalent info for M_SCALE
-        for (unsigned int j = 0; j < multipoleCovalentInfo[i][M_SCALE].size(); j++) {
-            int atom = multipoleCovalentInfo[i][M_SCALE][j];
-            _scaleMaps[M_SCALE][i][atom] = _mScale[j];
-            if (atom > _maxScaleIndex[i]) {
-                _maxScaleIndex[i] = atom;
+        for (int t = TholeDipoleForce::Covalent12; t <= TholeDipoleForce::Covalent15; t++) {
+            const vector<int>& mList = multipoleCovalentInfo[i][t];
+            const vector<int>& iList = multipoleCovalentInfo[i][t];
+
+            for (int atom : mList) {
+                if (atom >= 0) {
+                    _scaleMaps[M_SCALE][i][atom] = _mScale[t];  // t = 0,1,2,3
+                    if (atom > _maxScaleIndex[i]) _maxScaleIndex[i] = atom;
+                }
             }
-        }
-        
-        // Process covalent info for I_SCALE  
-        for (unsigned int j = 0; j < multipoleCovalentInfo[i][I_SCALE].size(); j++) {
-            int atom = multipoleCovalentInfo[i][I_SCALE][j];
-            _scaleMaps[I_SCALE][i][atom] = _iScale[j];
-            if (atom > _maxScaleIndex[i]) {
-                _maxScaleIndex[i] = atom;
+            for (int atom : iList) {
+                if (atom >= 0) {
+                    _scaleMaps[I_SCALE][i][atom] = _iScale[t];
+                    if (atom > _maxScaleIndex[i]) _maxScaleIndex[i] = atom;
+                }
             }
         }
     }
@@ -778,38 +554,6 @@ double ReferenceTholeDipoleForce::getScaleFactor(unsigned int particleI, unsigne
     return 1.0;
 }
 
-void ReferenceTholeDipoleForce::getAndScaleInverseRs(double dampI, double dampJ,
-                                                     double tholeI, double tholeJ,
-                                                     double r, vector<double>& rrI) const {
-    double rI = 1.0 / r;
-    double r2I = rI * rI;
-    
-    rrI[0] = rI * r2I;  // 1/r^3
-    double constantFactor = 3.0;
-    for (unsigned int i = 1; i < rrI.size(); i++) {
-        rrI[i] = constantFactor * rrI[i-1] * r2I;
-        constantFactor += 2.0;
-    }
-    
-    // Apply Thole damping
-    double damp = dampI * dampJ;
-    if (damp != 0.0) {
-        double pgamma = tholeI < tholeJ ? tholeI : tholeJ;
-        double ratio = r / damp;
-        ratio = ratio * ratio * ratio;
-        damp = -pgamma * ratio;
-        
-        if (damp > -50.0) {
-            double dampExp = exp(damp);
-            rrI[0] *= 1.0 - dampExp;
-            rrI[1] *= 1.0 - (1.0 - damp) * dampExp;
-            if (rrI.size() > 2) {
-                rrI[2] *= 1.0 - (1.0 - damp + (0.6 * damp * damp)) * dampExp;
-            }
-        }
-    }
-}
-
 void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     const TholeDipoleParticleData& particleI,
     const TholeDipoleParticleData& particleJ,
@@ -819,32 +563,39 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
         return;
     }
     
-    Vec3 deltaR = particleJ.position - particleI.position;
-    getPeriodicDelta(deltaR);
-    double r = sqrt(deltaR.dot(deltaR));
-    
-    vector<double> rrI(2);  // Need 1/r^3 and 1/r^5
-    getAndScaleInverseRs(particleI.tholeDamping, particleJ.tholeDamping, 
-                         particleI.tholeDamping, particleJ.tholeDamping, r, rrI);
-    
-    double rr3 = rrI[0];
-    double rr5 = rrI[1];
-    
-    // Field at particle I due to charge and dipole at particle J
-    double dipoleDeltaJ = particleJ.dipole.dot(deltaR);
-    double factorJ = rr3 * particleJ.charge - rr5 * dipoleDeltaJ;
-    Vec3 fieldJ = deltaR * factorJ + particleJ.dipole * rr3;
-    
-    unsigned int indexI = particleI.particleIndex;
-    _fixedDipoleField[indexI] -= fieldJ * mScale;
-    
-    // Field at particle J due to charge and dipole at particle I  
-    double dipoleDeltaI = particleI.dipole.dot(deltaR);
-    double factorI = rr3 * particleI.charge + rr5 * dipoleDeltaI;
-    Vec3 fieldI = deltaR * factorI - particleI.dipole * rr3;
-    
-    unsigned int indexJ = particleJ.particleIndex;
-    _fixedDipoleField[indexJ] += fieldI * mScale;
+    // Vector from source (J) to target (I)
+    Vec3 rVec = particleI.position - particleJ.position;
+    getPeriodicDelta(rVec);
+    double r = sqrt(rVec.dot(rVec));
+    if (r == 0.0) return;
+
+    const double rInv = 1.0 / r;
+    const double rInv2 = rInv * rInv;
+    const double rInv3 = rInv2 * rInv;
+    Vec3 rHat = rVec * rInv;
+
+    // --- Field at I due to J (permanent charge + permanent dipole) ---
+    Vec3 fieldAtI(0.0, 0.0, 0.0);
+    // Charge contribution: E = q / r^2 * rHat   [no COULOMB_CONSTANT]
+    fieldAtI += rHat * (particleJ.charge * rInv2);
+    // Dipole contribution: E = [3(μ·rHat) rHat - μ] / r^3
+    double muJ_dot_rHat = particleJ.dipole.dot(rHat);
+    fieldAtI += (3.0 * muJ_dot_rHat * rHat - particleJ.dipole) * rInv3;
+
+    _fixedDipoleField[particleI.particleIndex] += fieldAtI * mScale;
+
+    // --- Field at J due to I ---
+    Vec3 fieldAtJ(0.0, 0.0, 0.0);
+    // Vector from I to J is -rVec, so rHatJI = -rHat
+    Vec3 rHatJI = -rHat;
+
+    // Charge contribution
+    fieldAtJ += rHatJI * (particleI.charge * rInv2);
+    // Dipole contribution
+    double muI_dot_rHatJI = particleI.dipole.dot(rHatJI);
+    fieldAtJ += (3.0 * muI_dot_rHatJI * rHatJI - particleI.dipole) * rInv3;
+
+    _fixedDipoleField[particleJ.particleIndex] += fieldAtJ * mScale;
 }
 
 void ReferenceTholeDipoleForce::calculateFixedDipoleField(
@@ -861,9 +612,10 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleField(
                 mScale = getScaleFactor(i, j, M_SCALE);
                 iScale = getScaleFactor(i, j, I_SCALE);
             }
-            
+            std::cout << "i: " << i << " j: " << j << " mScale: " << mScale << " iScale: " << iScale << std::endl;
             calculateFixedDipoleFieldPairIxn(particleData[i], particleData[j], mScale, iScale);
         }
+        std::cout << "Fixed field on " << i << ": " << _fixedDipoleField[i] << std::endl;
     }
 }
 
@@ -928,13 +680,11 @@ void ReferenceTholeDipoleForce::calculateInducedDipoleFields(
             Vec3 deltaR = particleData[j].position - particleData[i].position;
             getPeriodicDelta(deltaR);
             double r = sqrt(deltaR.dot(deltaR));
-            
-            vector<double> rrI(2);
-            getAndScaleInverseRs(particleData[i].tholeDamping, particleData[j].tholeDamping,
-                                 particleData[i].tholeDamping, particleData[j].tholeDamping, r, rrI);
-            
-            double rr3 = -rrI[0];  // Note the negative sign
-            double rr5 = rrI[1];
+
+            const double rInv = 1.0 / r;
+            const double rInv2 = rInv * rInv;
+            const double rInv3 = rInv2 * rInv;
+            const double rInv5 = rInv3 * rInv2;
             
             // Get scaling factor
             double iScale = 1.0;
@@ -945,7 +695,7 @@ void ReferenceTholeDipoleForce::calculateInducedDipoleFields(
             // Calculate mutual field with scaling
             if (iScale != 0.0) {
                 Vec3 scaledDeltaR = deltaR;
-                calculateInducedDipolePairIxn(i, j, rr3 * iScale, rr5 * iScale, 
+                calculateInducedDipolePairIxn(i, j, rInv3 * iScale, rInv5 * iScale, 
                                               scaledDeltaR, inducedDipoles, inducedDipoleField);
             }
         }
@@ -1061,15 +811,6 @@ void ReferenceTholeDipoleForce::mapTorqueToForceForParticle(
         return;
     }
     
-    // Debug output for small systems
-    if (particleI.particleIndex <= 5) {
-        printf("DEBUG Torque Mapping: particle %d, axisType %d\n", particleI.particleIndex, axisType);
-        printf("  Torque: (%.6f, %.6f, %.6f)\n", torque[0], torque[1], torque[2]);
-        printf("  particleU: %d, particleV: %d", particleU.particleIndex, particleV.particleIndex);
-        if (particleW) printf(", particleW: %d", particleW->particleIndex);
-        printf("\n");
-    }
-
     Vec3 vectorU = particleU.position - particleI.position;
     double normU = normalizeVec3(vectorU);
 
@@ -1224,26 +965,10 @@ void ReferenceTholeDipoleForce::mapTorqueToForceForParticle(
         }
 
     } else if (axisType == TholeDipoleForce::ZOnly) {
-        // Z-only axis
-        if (particleI.particleIndex <= 5) {
-            printf("DEBUG ZOnly Details: particle %d\n", particleI.particleIndex);
-            printf("  vectorU: (%.6f, %.6f, %.6f), normU: %.6f\n", vectorU[0], vectorU[1], vectorU[2], normU);
-            printf("  vectorV: (%.6f, %.6f, %.6f)\n", vectorV[0], vectorV[1], vectorV[2]);
-            printf("  vectorW: (%.6f, %.6f, %.6f)\n", vectorW[0], vectorW[1], vectorW[2]);
-            printf("  vectorUV: (%.6f, %.6f, %.6f), sinUV: %.6f\n", vectorUV[0], vectorUV[1], vectorUV[2], sinUV);
-            printf("  vectorUW: (%.6f, %.6f, %.6f)\n", vectorUW[0], vectorUW[1], vectorUW[2]);
-            printf("  dphi: (%.6f, %.6f, %.6f)\n", dphi[0], dphi[1], dphi[2]);
-        }
         
         for (int i = 0; i < 3; i++) {
             double du = vectorUV[i]*dphi[1]/(normU*sinUV) + vectorUW[i]*dphi[2]/normU;
-            if (particleI.particleIndex <= 5) {
-                printf("  Force component[%d]: du = %.6f\n", i, du);
-            }
-            // Don't apply forces to dummy particles (particleIndex = -1)
-            if (particleU.particleIndex >= 0) {
-                forces[particleU.particleIndex][i] -= du;
-            }
+            forces[particleU.particleIndex][i] -= du;
             forces[particleI.particleIndex][i] += du;
         }
     }
@@ -1261,12 +986,6 @@ void ReferenceTholeDipoleForce::mapTorqueToForce(
     // Map torques to forces
     for (unsigned int ii = 0; ii < particleData.size(); ii++) {
         if (axisTypes[ii] != TholeDipoleForce::NoAxisType) {
-            // Debug output for small systems
-            if (ii <= 5) {
-                printf("DEBUG MapTorque Call: particle %d\n", ii);
-                printf("  axisType: %d, multipoleAtomZ: %d, multipoleAtomX: %d, multipoleAtomY: %d\n", 
-                       axisTypes[ii], multipoleAtomZs[ii], multipoleAtomXs[ii], multipoleAtomYs[ii]);
-            }
             
             // Handle ZOnly case where multipoleAtomX = -1
             TholeDipoleParticleData dummyParticleX;

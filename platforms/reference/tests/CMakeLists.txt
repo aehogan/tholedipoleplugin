@@ -2,7 +2,7 @@
 # Testing
 #
 
-# Create individual tests for each test function
+# Create individual tests for each test function, each with its own source file
 SET(INDIVIDUAL_TESTS
     TholeDipoleAmmoniaDirectPolarization
     TholeDipoleAmmoniaMutualPolarization
@@ -13,21 +13,26 @@ SET(INDIVIDUAL_TESTS
     ParticleTotalDipoles
     Triclinic
     ZBisect
+    ZOnly3Particle
+    ZOnlyNoDipNoPol
+    ZOnlyNoDip
+    ZOnlyNoPol
     ZOnly
-    ZOnlySimple
+    ZOnlyMutual
     NeutralizingPlasmaCorrection
+    ZeroCharges
+    ZeroDipoles
+    ZeroPolarizabilities
+    AllZeros
+    SingleParticle
+    SingleWater
+    ZXPair
 )
 
 FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})
-    ADD_EXECUTABLE(Test${TEST_NAME} TestReferenceTholeDipoleForce.cpp)
-    TARGET_COMPILE_DEFINITIONS(Test${TEST_NAME} PRIVATE RUN_ONLY_${TEST_NAME})
-    TARGET_LINK_LIBRARIES(Test${TEST_NAME} ${SHARED_TARGET})
+    ADD_EXECUTABLE(Test${TEST_NAME} Test${TEST_NAME}.cpp TholeDipoleTestCommon.cpp)
+    TARGET_LINK_LIBRARIES(Test${TEST_NAME} ${SHARED_TARGET} ${OPENMM_LIBRARY} /home/aehogan2/miniforge3/envs/openff_jun2025/lib/libOpenMMAmoeba.so)
     SET_TARGET_PROPERTIES(Test${TEST_NAME} PROPERTIES LINK_FLAGS "${EXTRA_COMPILE_FLAGS}" COMPILE_FLAGS "${EXTRA_COMPILE_FLAGS}")
     ADD_TEST(${TEST_NAME} ${EXECUTABLE_OUTPUT_PATH}/Test${TEST_NAME})
 ENDFOREACH(TEST_NAME ${INDIVIDUAL_TESTS})
 
-# Also keep the original test that runs all tests
-ADD_EXECUTABLE(TestReferenceTholeDipoleForceAll TestReferenceTholeDipoleForce.cpp)
-TARGET_LINK_LIBRARIES(TestReferenceTholeDipoleForceAll ${SHARED_TARGET})
-SET_TARGET_PROPERTIES(TestReferenceTholeDipoleForceAll PROPERTIES LINK_FLAGS "${EXTRA_COMPILE_FLAGS}" COMPILE_FLAGS "${EXTRA_COMPILE_FLAGS}")
-ADD_TEST(AllTests ${EXECUTABLE_OUTPUT_PATH}/TestReferenceTholeDipoleForceAll)
