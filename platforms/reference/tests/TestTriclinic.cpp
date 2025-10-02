@@ -46,6 +46,7 @@ void testTriclinic() {
     TholeDipoleForce* force = new TholeDipoleForce();
     system.addForce(force);
     force->setNonbondedMethod(TholeDipoleForce::PME);
+    force->setPolarizationType(TholeDipoleForce::Mutual);
     force->setCutoffDistance(0.7);
     force->setMutualInducedTargetEpsilon(1e-6);
     force->setPMEParameters(5.4459051633620055, 24, 24, 24);
@@ -111,10 +112,32 @@ void testTriclinic() {
     context.setPositions(positions);
     State state = context.getState(State::Forces | State::Energy);
 
-    // Compare them to values that need to be computed for Thole dipole model
-    // Placeholder test - actual values would need to be calculated
-    // double expectedEnergy = 5.0;  // Placeholder
-    // ASSERT_EQUAL_TOL(expectedEnergy, state.getPotentialEnergy(), 1e-2);
+    std::cout << "TholeDipole Energy: " << state.getPotentialEnergy() << " kJ/mol" << std::endl;
+
+    // Basic sanity checks
+    ASSERT(std::isfinite(state.getPotentialEnergy()));
+    const vector<Vec3>& forces = state.getForces();
+    for (int i = 0; i < 24; i++) {
+        ASSERT(std::isfinite(forces[i][0]));
+        ASSERT(std::isfinite(forces[i][1]));
+        ASSERT(std::isfinite(forces[i][2]));
+    }
+
+    // Compare with AMOEBA
+    System amoebaSystem;
+    amoebaSystem.setDefaultPeriodicBoxVectors(Vec3(1.8643, 0, 0), Vec3(-0.16248445120445926, 1.8572057756524414, 0), Vec3(0.16248445120445906, -0.14832299817478897, 1.8512735025730875));
+    for (int i = 0; i < 24; i++)
+        amoebaSystem.addParticle(1.0);
+
+    AmoebaMultipoleForce* amoebaForce = createEquivalentAmoebaForce(force);
+    amoebaForce->setNonbondedMethod(AmoebaMultipoleForce::PME);
+    amoebaForce->setPolarizationType(AmoebaMultipoleForce::Mutual);
+    amoebaForce->setCutoffDistance(0.7);
+    amoebaForce->setMutualInducedTargetEpsilon(1e-6);
+    amoebaForce->setPMEParameters(5.4459051633620055, 24, 24, 24);
+    amoebaSystem.addForce(amoebaForce);
+
+    compareForces("testTriclinic", system, amoebaSystem, positions, 0.1, 0.1);
 }
 
 int main(int argc, char* argv[]) {

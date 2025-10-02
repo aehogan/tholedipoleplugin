@@ -94,6 +94,29 @@ void testSingleWater() {
 
     tholeDipoleSystem.addForce(tholeDipoleForce);
 
+    // Debug: Print TholeDipole covalent maps
+    cout << "\n=== TholeDipole Covalent Maps ===" << endl;
+    for (int i = 0; i < 3; i++) {
+        cout << "Particle " << i << ":" << endl;
+        for (int typeId = 0; typeId < TholeDipoleForce::CovalentEnd; typeId++) {
+            std::vector<int> covalentAtoms;
+            tholeDipoleForce->getCovalentMap(i, static_cast<TholeDipoleForce::CovalentType>(typeId), covalentAtoms);
+            if (!covalentAtoms.empty()) {
+                cout << "  Type " << typeId << " (";
+                if (typeId == 0) cout << "1-2";
+                else if (typeId == 1) cout << "1-3";
+                else if (typeId == 2) cout << "1-4";
+                else if (typeId == 3) cout << "1-5";
+                cout << "): ";
+                for (size_t j = 0; j < covalentAtoms.size(); j++) {
+                    if (j > 0) cout << ", ";
+                    cout << covalentAtoms[j];
+                }
+                cout << endl;
+            }
+        }
+    }
+
     // Water geometry (typical water structure)
     std::vector<Vec3> positions(3);
     positions[0] = Vec3(0.0, 0.0, 0.0);           // Oxygen at origin
@@ -147,26 +170,45 @@ void testSingleWater() {
     }
 
     // Compare with AMOEBA
-    try {
-        cout << "\n=== AMOEBA Comparison ===" << endl;
+    cout << "\n=== AMOEBA Comparison ===" << endl;
 
-        // Create equivalent AMOEBA system
-        System amoebaSystem;
-        amoebaSystem.addParticle(1.5995000e+01);
-        amoebaSystem.addParticle(1.0080000e+00);
-        amoebaSystem.addParticle(1.0080000e+00);
+    // Create equivalent AMOEBA system
+    System amoebaSystem;
+    amoebaSystem.addParticle(1.5995000e+01);
+    amoebaSystem.addParticle(1.0080000e+00);
+    amoebaSystem.addParticle(1.0080000e+00);
 
-        AmoebaMultipoleForce* amoebaForce = createEquivalentAmoebaForce(tholeDipoleForce);
-        amoebaForce->setNonbondedMethod(AmoebaMultipoleForce::NoCutoff);
-        amoebaForce->setPolarizationType(AmoebaMultipoleForce::Direct);
-        amoebaSystem.addForce(amoebaForce);
+    AmoebaMultipoleForce* amoebaForce = createEquivalentAmoebaForce(tholeDipoleForce);
+    amoebaForce->setNonbondedMethod(AmoebaMultipoleForce::NoCutoff);
+    amoebaForce->setPolarizationType(AmoebaMultipoleForce::Direct);
 
-        // Use compareForces for full AMOEBA comparison
-        compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 0.01, 0.01);
-    } catch (const std::exception& e) {
-        cout << "\nAMOEBA comparison failed: " << e.what() << endl;
-        cout << "Test still passes (TholeDipole standalone validation succeeded)" << endl;
+    // Debug: Print AMOEBA covalent maps
+    cout << "\n=== AMOEBA Covalent Maps ===" << endl;
+    for (int i = 0; i < 3; i++) {
+        cout << "Particle " << i << ":" << endl;
+        for (int typeId = 0; typeId < AmoebaMultipoleForce::PolarizationCovalent11; typeId++) {
+            std::vector<int> covalentAtoms;
+            amoebaForce->getCovalentMap(i, static_cast<AmoebaMultipoleForce::CovalentType>(typeId), covalentAtoms);
+            if (!covalentAtoms.empty()) {
+                cout << "  Type " << typeId << " (";
+                if (typeId == AmoebaMultipoleForce::Covalent12) cout << "1-2";
+                else if (typeId == AmoebaMultipoleForce::Covalent13) cout << "1-3";
+                else if (typeId == AmoebaMultipoleForce::Covalent14) cout << "1-4";
+                else if (typeId == AmoebaMultipoleForce::Covalent15) cout << "1-5";
+                cout << "): ";
+                for (size_t j = 0; j < covalentAtoms.size(); j++) {
+                    if (j > 0) cout << ", ";
+                    cout << covalentAtoms[j];
+                }
+                cout << endl;
+            }
+        }
     }
+
+    amoebaSystem.addForce(amoebaForce);
+
+    // Use compareForces for full AMOEBA comparison - this will throw if comparison fails
+    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 0.01, 0.01);
 }
 
 int main(int argc, char* argv[]) {

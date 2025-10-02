@@ -68,30 +68,25 @@ static void testTholeDipoleAmmoniaMutualPolarization() {
     }
 
     // Compare with AMOEBA
-    try {
-        cout << "Starting full AMOEBA comparison..." << endl;
+    cout << "Starting full AMOEBA comparison..." << endl;
 
-        // Create equivalent AMOEBA system
-        System amoebaSystem;
-        for (int i = 0; i < numberOfParticles; i++)
-            amoebaSystem.addParticle(tholeDipoleSystem.getParticleMass(i));
+    // Create equivalent AMOEBA system
+    System amoebaSystem;
+    for (int i = 0; i < numberOfParticles; i++)
+        amoebaSystem.addParticle(tholeDipoleSystem.getParticleMass(i));
 
-        // Set periodic box
-        Vec3 a, b, c;
-        tholeDipoleSystem.getDefaultPeriodicBoxVectors(a, b, c);
-        amoebaSystem.setDefaultPeriodicBoxVectors(a, b, c);
+    // Set periodic box
+    Vec3 a, b, c;
+    tholeDipoleSystem.getDefaultPeriodicBoxVectors(a, b, c);
+    amoebaSystem.setDefaultPeriodicBoxVectors(a, b, c);
 
-        AmoebaMultipoleForce* amoebaForce = createEquivalentAmoebaForce(tholeDipoleForce);
-        amoebaForce->setNonbondedMethod(AmoebaMultipoleForce::NoCutoff);
-        amoebaForce->setPolarizationType(AmoebaMultipoleForce::Mutual);
-        amoebaSystem.addForce(amoebaForce);
+    AmoebaMultipoleForce* amoebaForce = createEquivalentAmoebaForce(tholeDipoleForce);
+    amoebaForce->setNonbondedMethod(AmoebaMultipoleForce::NoCutoff);
+    amoebaForce->setPolarizationType(AmoebaMultipoleForce::Mutual);
+    amoebaSystem.addForce(amoebaForce);
 
-        // Use compareForces for full AMOEBA comparison including dipoles
-        compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 0.01, 0.01);
-    } catch (const std::exception& e) {
-        cout << "Full AMOEBA comparison failed: " << e.what() << endl;
-        cout << "Test still passes (TholeDipole standalone validation succeeded)" << endl;
-    }
+    // Use compareForces for full AMOEBA comparison including dipoles
+    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 0.01, 0.01);
 
     // Test parameter update functionality
     double tolerance = 1.0e-4;

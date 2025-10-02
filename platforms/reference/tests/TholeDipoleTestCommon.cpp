@@ -349,19 +349,25 @@ AmoebaMultipoleForce* createEquivalentAmoebaForce(TholeDipoleForce* tholeDipoleF
     }
     
     // Copy covalent maps
-    // Note: AMOEBA uses PolarizationCovalent11 to indicate atoms are on the same molecule
-    // We need to collect all TholeDipole covalent atoms (12, 13, 14, 15) and map them to
-    // AMOEBA's PolarizationCovalent11
+    // TholeDipole uses Covalent12/13/14/15 for electrostatic scaling
+    // AMOEBA also uses Covalent12/13/14/15 (same indices 0-3) for electrostatic scaling
+    // and PolarizationCovalent11 for polarization scaling
     for (int i = 0; i < numParticles; i++) {
         vector<int> allCovalentAtoms;
 
-        // Collect all covalent atoms from all TholeDipole covalent types
+        // Copy each covalent type directly (12, 13, 14, 15) from TholeDipole to AMOEBA
         for (int j = 0; j < TholeDipoleForce::CovalentEnd; j++) {
             vector<int> covalentAtoms;
             tholeDipoleForce->getCovalentMap(i,
                 static_cast<TholeDipoleForce::CovalentType>(j), covalentAtoms);
 
-            // Add all atoms to the combined list
+            // Set the same covalent type in AMOEBA (indices match: 0=12, 1=13, 2=14, 3=15)
+            if (!covalentAtoms.empty()) {
+                amoebaForce->setCovalentMap(i,
+                    static_cast<AmoebaMultipoleForce::CovalentType>(j), covalentAtoms);
+            }
+
+            // Also collect all atoms for PolarizationCovalent11
             allCovalentAtoms.insert(allCovalentAtoms.end(),
                                    covalentAtoms.begin(), covalentAtoms.end());
         }
