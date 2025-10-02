@@ -587,9 +587,15 @@ protected:
 
     void calculateInducedDipolePairIxn(unsigned int particleI,
                                        unsigned int particleJ,
-                                       double rr3,
-                                       double rr5,
+                                       double r,
+                                       double rInv3,
+                                       double rInv5,
                                        const Vec3& deltaR,
+                                       double iScale,
+                                       double polarizabilityI,
+                                       double polarizabilityJ,
+                                       double tholeDampingI,
+                                       double tholeDampingJ,
                                        const std::vector<Vec3>& inducedDipole,
                                        std::vector<Vec3>& field) const;
 

@@ -576,7 +576,7 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
 
     // --- Field at I due to J (permanent charge + permanent dipole) ---
     Vec3 fieldAtI(0.0, 0.0, 0.0);
-    // Charge contribution: E = q / r^2 * rHat   [no COULOMB_CONSTANT]
+    // Charge contribution: E = q / r^2 * rHat
     fieldAtI += rHat * (particleJ.charge * rInv2);
     // Dipole contribution: E = [3(μ·rHat) rHat - μ] / r^3
     double muJ_dot_rHat = particleJ.dipole.dot(rHat);
@@ -612,10 +612,8 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleField(
                 mScale = getScaleFactor(i, j, M_SCALE);
                 iScale = getScaleFactor(i, j, I_SCALE);
             }
-            std::cout << "i: " << i << " j: " << j << " mScale: " << mScale << " iScale: " << iScale << std::endl;
             calculateFixedDipoleFieldPairIxn(particleData[i], particleData[j], mScale, iScale);
         }
-        std::cout << "Fixed field on " << i << ": " << _fixedDipoleField[i] << std::endl;
     }
 }
 
@@ -653,17 +651,62 @@ void ReferenceTholeDipoleForce::calculateInducedDipoles(
 void ReferenceTholeDipoleForce::calculateInducedDipolePairIxn(
     unsigned int particleI,
     unsigned int particleJ,
-    double rr3,
-    double rr5,
+    double r,
+    double rInv3,
+    double rInv5,
     const Vec3& deltaR,
+    double iScale,
+    double polarizabilityI,
+    double polarizabilityJ,
+    double tholeDampingI,
+    double tholeDampingJ,
     const vector<Vec3>& inducedDipole,
     vector<Vec3>& field) const {
     
-    double dDotDelta = rr5 * (inducedDipole[particleJ].dot(deltaR));
-    field[particleI] += inducedDipole[particleJ] * rr3 + deltaR * dDotDelta;
-    
-    dDotDelta = rr5 * (inducedDipole[particleI].dot(deltaR));
-    field[particleJ] += inducedDipole[particleI] * rr3 + deltaR * dDotDelta;
+    if (_polarizationType == Direct) {
+        double dDotDelta = rInv5 * (inducedDipole[particleJ].dot(deltaR));
+        field[particleI] += inducedDipole[particleJ] * rInv3 + deltaR * dDotDelta;
+
+        dDotDelta = rInv5 * (inducedDipole[particleI].dot(deltaR));
+        field[particleJ] += inducedDipole[particleI] * rInv3 + deltaR * dDotDelta;
+    }
+    else {
+        // Use the smaller Thole damping parameter (AMOEBA convention)
+        const double a = (tholeDampingI < tholeDampingJ) ? tholeDampingI : tholeDampingJ;
+
+        // Compute damping length scale: (α_i * α_j)^(1/6)
+        double dampingFactor = 0.0;
+        if (polarizabilityI > 0.0 && polarizabilityJ > 0.0) {
+            dampingFactor = pow(polarizabilityI * polarizabilityJ, 1.0 / 6.0);
+        }
+
+        double damping_factor = 1.0;
+        if (dampingFactor > 1.0e-5 && r > 1.0e-8) {
+            const double u = r / dampingFactor;
+            const double au3 = a * u * u * u;
+            if (au3 < 50.0) {
+                const double expau3 = exp(-au3);
+                damping_factor = 1.0 - expau3;
+            }
+            // else: au3 >= 50 → exp(-au3) ≈ 0 → damping_factor ≈ 1.0
+        }
+
+        // Get induced dipoles
+        const Vec3& uj = inducedDipole[particleJ];
+        const Vec3& ui = inducedDipole[particleI];
+
+        // Undamped field on I due to J
+        double dDotDelta = rInv5 * uj.dot(deltaR);
+        Vec3 fieldI = uj * rInv3 + deltaR * dDotDelta;
+
+        // Undamped field on J due to I
+        dDotDelta = rInv5 * ui.dot(deltaR);
+        Vec3 fieldJ = ui * rInv3 + deltaR * dDotDelta;
+
+        // Apply scaling and damping
+        field[particleI] += iScale * damping_factor * fieldI;
+        field[particleJ] += iScale * damping_factor * fieldJ;
+    }
 }
 
 void ReferenceTholeDipoleForce::calculateInducedDipoleFields(
@@ -671,32 +714,38 @@ void ReferenceTholeDipoleForce::calculateInducedDipoleFields(
     const vector<Vec3>& inducedDipoles,
     vector<Vec3>& inducedDipoleField) {
     
-    // Initialize field to zero
     initializeVec3Vector(inducedDipoleField);
     
-    // Calculate induced dipole fields
     for (unsigned int i = 0; i < _numParticles; i++) {
         for (unsigned int j = i + 1; j < _numParticles; j++) {
             Vec3 deltaR = particleData[j].position - particleData[i].position;
             getPeriodicDelta(deltaR);
             double r = sqrt(deltaR.dot(deltaR));
 
+            if (r < 1e-8) continue;
+
             const double rInv = 1.0 / r;
-            const double rInv2 = rInv * rInv;
-            const double rInv3 = rInv2 * rInv;
-            const double rInv5 = rInv3 * rInv2;
+            const double rInv3 = rInv * rInv * rInv;
+            const double rInv5 = rInv3 * rInv * rInv;
             
-            // Get scaling factor
             double iScale = 1.0;
             if (j <= _maxScaleIndex[i]) {
                 iScale = getScaleFactor(i, j, I_SCALE);
             }
             
-            // Calculate mutual field with scaling
             if (iScale != 0.0) {
-                Vec3 scaledDeltaR = deltaR;
-                calculateInducedDipolePairIxn(i, j, rInv3 * iScale, rInv5 * iScale, 
-                                              scaledDeltaR, inducedDipoles, inducedDipoleField);
+                calculateInducedDipolePairIxn(
+                    i, j,
+                    r, rInv3, rInv5,
+                    deltaR,
+                    iScale,
+                    particleData[i].polarizability,
+                    particleData[j].polarizability,
+                    particleData[i].tholeDamping,
+                    particleData[j].tholeDamping,
+                    inducedDipoles,
+                    inducedDipoleField
+                );
             }
         }
     }
@@ -711,18 +760,18 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByDIIS(
     vector<Vec3> inducedDipoleField;
     double epsilon = 1.0;
     
-    for (_mutualInducedDipoleIterations = 0; 
-         _mutualInducedDipoleIterations < _maximumMutualInducedDipoleIterations && 
+    for (_mutualInducedDipoleIterations = 0;
+         _mutualInducedDipoleIterations < _maximumMutualInducedDipoleIterations &&
          epsilon > _mutualInducedDipoleTargetEpsilon;
          _mutualInducedDipoleIterations++) {
-        
+
         // Calculate induced dipole field
         calculateInducedDipoleFields(particleData, _inducedDipole, inducedDipoleField);
-        
+
         // Update induced dipoles and check convergence
         epsilon = 0.0;
         for (unsigned int i = 0; i < _numParticles; i++) {
-            Vec3 newDipole = (_fixedDipoleField[i] + inducedDipoleField[i]) * 
+            Vec3 newDipole = (_fixedDipoleField[i] + inducedDipoleField[i]) *
                              particleData[i].polarizability;
             Vec3 delta = newDipole - _inducedDipole[i];
             epsilon += delta.dot(delta);
@@ -730,7 +779,7 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByDIIS(
         }
         epsilon = sqrt(epsilon / _numParticles);
     }
-    
+
     _mutualInducedDipoleEpsilon = epsilon;
     _mutualInducedDipoleConverged = epsilon < _mutualInducedDipoleTargetEpsilon ? 1 : 0;
 }
@@ -1072,8 +1121,9 @@ void ReferenceTholeDipoleForce::calculateInducedDipoles(const vector<Vec3>& part
     setup(particlePositions, charges, dipoles, polarizabilities, tholeDampingFactors,
           axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
           multipoleCovalentInfo, particleData);
-    
+
     outputInducedDipoles = _inducedDipole;
+
 }
 
 void ReferenceTholeDipoleForce::calculateLabFramePermanentDipoles(const vector<Vec3>& particlePositions,
