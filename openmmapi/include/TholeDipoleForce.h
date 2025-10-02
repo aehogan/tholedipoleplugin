@@ -90,20 +90,20 @@ public:
         Extrapolated = 2
     };
 
-    enum MultipoleAxisTypes { 
-        ZThenX = 0, 
-        Bisector = 1, 
-        ZBisect = 2, 
-        ThreeFold = 3, 
-        ZOnly = 4, 
-        NoAxisType = 5, 
-        LastAxisTypeIndex = 6 
+    enum MultipoleAxisTypes {
+        ZThenX = 0,
+        Bisector = 1,
+        ZBisect = 2,
+        ThreeFold = 3,
+        ZOnly = 4,
+        NoAxisType = 5,
+        LastAxisTypeIndex = 6
     };
 
     enum CovalentType {
-        Covalent12 = 0, 
-        Covalent13 = 1, 
-        Covalent14 = 2, 
+        Covalent12 = 0,
+        Covalent13 = 1,
+        Covalent14 = 2,
         Covalent15 = 3,
         CovalentEnd = 4
     };
@@ -213,8 +213,8 @@ public:
      *
      * @return the index of the particle that was added
      */
-    int addParticle(double charge, const std::vector<double>& molecularDipole, double polarizability, 
-                    double tholeDamping, int axisType = NoAxisType, int multipoleAtomZ = -1, 
+    int addParticle(double charge, const std::vector<double>& molecularDipole, double polarizability,
+                    double tholeDamping, int axisType = NoAxisType, int multipoleAtomZ = -1,
                     int multipoleAtomX = -1, int multipoleAtomY = -1);
 
     /**
@@ -230,8 +230,8 @@ public:
      * @param[out] multipoleAtomX       index of second atom used in constructing lab<->molecular frames
      * @param[out] multipoleAtomY       index of third atom used in constructing lab<->molecular frames
      */
-    void getParticleParameters(int index, double& charge, std::vector<double>& molecularDipole, 
-                               double& polarizability, double& tholeDamping, int& axisType, 
+    void getParticleParameters(int index, double& charge, std::vector<double>& molecularDipole,
+                               double& polarizability, double& tholeDamping, int& axisType,
                                int& multipoleAtomZ, int& multipoleAtomX, int& multipoleAtomY) const;
 
     /**
@@ -247,8 +247,8 @@ public:
      * @param multipoleAtomX       index of second atom used in constructing lab<->molecular frames
      * @param multipoleAtomY       index of third atom used in constructing lab<->molecular frames
      */
-    void setParticleParameters(int index, double charge, const std::vector<double>& molecularDipole, 
-                               double polarizability, double tholeDamping, int axisType, 
+    void setParticleParameters(int index, double charge, const std::vector<double>& molecularDipole,
+                               double polarizability, double tholeDamping, int axisType,
                                int multipoleAtomZ, int multipoleAtomX, int multipoleAtomY);
 
     /**
