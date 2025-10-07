@@ -49,6 +49,54 @@
 #include "ReferenceTests.h"
 #include "TholeDipoleTestCommon.h"
 
+/**
+ * Check that analytical forces match numerical gradients (finite differences).
+ * Takes small steps along the force direction and verifies that the energy
+ * changes by the expected amount based on F = -dE/dx.
+ */
+static void checkFiniteDifferences(const vector<Vec3>& analyticForces,
+                                  Context& context,
+                                  const vector<Vec3>& positions) {
+    // Calculate norm of force vector
+    double norm = 0.0;
+    for (const auto& f : analyticForces)
+        norm += f.dot(f);
+    norm = std::sqrt(norm);
+
+    // Take a small step in the force direction
+    const double stepSize = 1e-3;  // Total step size (nm)
+    double step = 0.5 * stepSize / norm;  // Half step in each direction
+
+    vector<Vec3> positions2(analyticForces.size()), positions3(analyticForces.size());
+    for (int i = 0; i < (int) positions.size(); ++i) {
+        Vec3 p = positions[i];
+        Vec3 f = analyticForces[i];
+        // Step backwards (against force)
+        positions2[i] = Vec3(p[0] - f[0]*step, p[1] - f[1]*step, p[2] - f[2]*step);
+        // Step forwards (along force)
+        positions3[i] = Vec3(p[0] + f[0]*step, p[1] + f[1]*step, p[2] + f[2]*step);
+    }
+
+    // Evaluate energy at both positions
+    context.setPositions(positions2);
+    State state2 = context.getState(State::Energy);
+    context.setPositions(positions3);
+    State state3 = context.getState(State::Energy);
+
+    // Numerical derivative: dE/ds ≈ (E(x+δ) - E(x-δ)) / (2δ)
+    // Since F = -dE/dx and we stepped along F direction, we expect:
+    // |F| = (E(x-δF) - E(x+δF)) / stepSize
+    double numericalForceNorm = (state2.getPotentialEnergy() - state3.getPotentialEnergy()) / stepSize;
+
+    cout << "  Finite Difference Check:" << endl;
+    cout << "    Analytical force norm: " << norm << " kJ/mol/nm" << endl;
+    cout << "    Numerical force norm:  " << numericalForceNorm << " kJ/mol/nm" << endl;
+    cout << "    Difference:            " << fabs(norm - numericalForceNorm) << " kJ/mol/nm" << endl;
+    cout << "    Relative error:        " << fabs(norm - numericalForceNorm) / norm * 100.0 << " %" << endl;
+
+    ASSERT_EQUAL_TOL(norm, numericalForceNorm, 1e-2);
+}
+
 void testTwoPointChargesNoPol() {
     System system;
     system.addParticle(1.0);
@@ -92,6 +140,9 @@ void testTwoPointChargesNoPol() {
     ASSERT(energy < 0.0);
     ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
+
+    // Check forces vs finite differences
+    checkFiniteDifferences(forces, context, positions);
 }
 
 void testTwoPointChargesLinear() {
@@ -143,6 +194,9 @@ void testTwoPointChargesLinear() {
     ASSERT(energy < 0.0);
     ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
+
+    // Check forces vs finite differences
+    checkFiniteDifferences(forces, context, positions);
 }
 
 void testTwoPointChargesExponential() {
@@ -202,6 +256,9 @@ void testTwoPointChargesExponential() {
     ASSERT(energy < 0.0);
     ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
+
+    // Check forces vs finite differences
+    checkFiniteDifferences(forces, context, positions);
 }
 
 void testTwoPointChargesAmoeba() {
@@ -253,6 +310,9 @@ void testTwoPointChargesAmoeba() {
     ASSERT(energy < 0.0);
     ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
+
+    // Check forces vs finite differences
+    checkFiniteDifferences(forces, context, positions);
 }
 
 int main(int argc, char* argv[]) {

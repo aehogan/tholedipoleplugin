@@ -211,8 +211,8 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
             damp1 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
             damp2 = damp1 - exp_ar * (ar * ar * ar / 6.0);
             if (ar < 50.0) {
-                d_damp1_dr = a * exp_ar * (0.5 * ar + 1.0) * ar;
-                d_damp2_dr = d_damp1_dr - a * exp_ar * (ar * ar - 1.0) * ar * ar / 6.0;
+                d_damp1_dr = 0.5 * a * a * a * r * r * exp_ar;
+                d_damp2_dr = a * a * a * a * r * r * r * exp_ar / 6.0;
             }
         }
         else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
