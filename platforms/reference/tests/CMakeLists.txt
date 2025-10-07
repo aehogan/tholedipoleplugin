@@ -27,6 +27,7 @@ SET(INDIVIDUAL_TESTS
     SingleParticle
     SingleWater
     ZXPair
+    TwoPointCharges
 )
 
 FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})
