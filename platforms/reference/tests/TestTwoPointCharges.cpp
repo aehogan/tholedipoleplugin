@@ -34,11 +34,16 @@
  * Two charges: +0.5e and -0.5e separated by 3 Angstroms (0.3 nm)
  * Tests multiple damping types and compares with MPMC ground truth.
  *
- * MPMC Reference values (10000 A box):
+ * IMPORTANT UNIT NOTE:
+ *   - Linear and AMOEBA damping parameters are dimensionless (same value in both codes)
+ *   - Exponential damping parameter has units of inverse length:
+ *     MPMC uses Å⁻¹, OpenMM uses nm⁻¹ → multiply by 10 to convert
+ *
+ * MPMC Reference values (10000 A box, polarizability 1.5 Å³):
  *   No polarization: -13925.19971 K = -115.768 kJ/mol (electrostatic only)
- *   Linear damping (λ=2.1304): -14795.52451 K = -123.016 kJ/mol
- *   Exponential damping (λ=2.1304): -14778.87515 K = -122.878 kJ/mol
- *   AMOEBA damping (λ=0.39): -14794.40479 K = -123.007 kJ/mol
+ *   Linear damping (λ=2.1304 dimensionless): -14795.52451 K = -123.016 kJ/mol
+ *   Exponential damping (λ=2.1304 Å⁻¹ = 21.304 nm⁻¹): -14778.87515 K = -122.878 kJ/mol
+ *   AMOEBA damping (λ=0.39 dimensionless): -14794.40479 K = -123.007 kJ/mol
  */
 
 #include "ReferenceTests.h"
@@ -85,6 +90,7 @@ void testTwoPointChargesNoPol() {
 
     ASSERT(std::isfinite(energy));
     ASSERT(energy < 0.0);
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
 }
 
@@ -135,6 +141,7 @@ void testTwoPointChargesLinear() {
 
     ASSERT(std::isfinite(energy));
     ASSERT(energy < 0.0);
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
 }
 
@@ -151,8 +158,10 @@ void testTwoPointChargesExponential() {
     force->setMutualInducedMaxIterations(500);
 
     // Set Thole damping to match MPMC
+    // Exponential damping parameter has units of inverse length
+    // MPMC: 2.1304 Å⁻¹ → OpenMM: 21.304 nm⁻¹ (multiply by 10)
     force->setTholeDampingType(TholeDipoleForce::Exponential);
-    force->setTholeDampingParameter(2.1304);
+    force->setTholeDampingParameter(21.304);
 
     // Two particles with charges +0.5 and -0.5
     // Zero permanent dipole, polarizability = 1.5 A^3 = 0.0015 nm^3
@@ -191,6 +200,7 @@ void testTwoPointChargesExponential() {
 
     ASSERT(std::isfinite(energy));
     ASSERT(energy < 0.0);
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
 }
 
@@ -241,6 +251,7 @@ void testTwoPointChargesAmoeba() {
 
     ASSERT(std::isfinite(energy));
     ASSERT(energy < 0.0);
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
 }
 
