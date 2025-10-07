@@ -46,7 +46,7 @@ void testNeutralizingPlasmaCorrection() {
     vector<double> d(3, 0.0);
     for (int i = 0; i < 2; i++) {
         system.addParticle(1.0);
-        force->addParticle(1.0, d, 0.001, 0.39, TholeDipoleForce::NoAxisType, 0, 0, 0);
+        force->addParticle(1.0, d, 0.001, TholeDipoleForce::NoAxisType, 0, 0, 0);
     }
     vector<Vec3> positions(2);
     positions[0] = Vec3();
@@ -69,7 +69,7 @@ void testNeutralizingPlasmaCorrection() {
     // Try changing a particle charge with updateParametersInContext() and make sure the
     // energy changes by the correct amount.
 
-    force->setParticleParameters(0, 2.0, d, 0.001, 0.39, TholeDipoleForce::NoAxisType, 0, 0, 0);
+    force->setParticleParameters(0, 2.0, d, 0.001, TholeDipoleForce::NoAxisType, 0, 0, 0);
     force->updateParametersInContext(context);
     double energy3 = context.getState(State::Energy).getPotentialEnergy();
     force->setCutoffDistance(1.0);

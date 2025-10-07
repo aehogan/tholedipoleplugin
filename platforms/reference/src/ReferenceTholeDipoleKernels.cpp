@@ -86,7 +86,6 @@ void ReferenceCalcTholeDipoleForceKernel::initialize(const System& system, const
 
     charges.resize(numParticles);
     dipoles.resize(3*numParticles);
-    tholes.resize(numParticles);
     polarity.resize(numParticles);
     axisTypes.resize(numParticles);
     multipoleAtomZs.resize(numParticles);
@@ -100,9 +99,9 @@ void ReferenceCalcTholeDipoleForceKernel::initialize(const System& system, const
 
         // Get particle parameters
         int axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY;
-        double charge, tholeD, polarityD;
+        double charge, polarityD;
         std::vector<double> dipolesD;
-        force.getParticleParameters(ii, charge, dipolesD, polarityD, tholeD, axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY);
+        force.getParticleParameters(ii, charge, dipolesD, polarityD, axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY);
 
         totalCharge += charge;
         axisTypes[ii] = axisType;
@@ -111,7 +110,6 @@ void ReferenceCalcTholeDipoleForceKernel::initialize(const System& system, const
         multipoleAtomYs[ii] = multipoleAtomY;
 
         charges[ii] = charge;
-        tholes[ii] = tholeD;
         polarity[ii] = polarityD;
 
         dipoles[dipoleIndex++] = dipolesD[0];
@@ -123,6 +121,10 @@ void ReferenceCalcTholeDipoleForceKernel::initialize(const System& system, const
         force.getCovalentMaps(ii, covalentLists);
         covalentInfo[ii] = covalentLists;
     }
+
+    // Get global Thole damping parameters
+    tholeDampingType = force.getTholeDampingType();
+    tholeDampingParameter = force.getTholeDampingParameter();
 
     polarizationType = force.getPolarizationType();
     if (polarizationType == TholeDipolePlugin::TholeDipoleForce::Mutual) {
@@ -195,6 +197,10 @@ TholeDipolePlugin::ReferenceTholeDipoleForce* ReferenceCalcTholeDipoleForceKerne
         throw OpenMMException("Polarization type not recognized.");
     }
 
+    // Set global Thole damping parameters
+    referenceTholeDipoleForce->setTholeDampingType(tholeDampingType);
+    referenceTholeDipoleForce->setTholeDampingParameter(tholeDampingParameter);
+
     return referenceTholeDipoleForce;
 }
 
@@ -205,7 +211,7 @@ double ReferenceCalcTholeDipoleForceKernel::execute(ContextImpl& context, bool i
     vector<Vec3>& posData = extractPositions(context);
     vector<Vec3>& forceData = extractForces(context);
     double energy = referenceTholeDipoleForce->calculateForceAndEnergy(posData, charges, dipoles, polarity,
-                                                                       tholes, axisTypes, 
+                                                                       axisTypes,
                                                                        multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
                                                                        covalentInfo, forceData);
 
@@ -224,10 +230,10 @@ void ReferenceCalcTholeDipoleForceKernel::getInducedDipoles(ContextImpl& context
     vector<Vec3>& posData = extractPositions(context);
     
     // Retrieve the induced dipoles.
-    
+
     vector<Vec3> inducedDipoles;
     referenceTholeDipoleForce->calculateInducedDipoles(posData, charges, dipoles, polarity,
-            tholes, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, covalentInfo, inducedDipoles);
+            axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, covalentInfo, inducedDipoles);
     for (int i = 0; i < numParticles; i++)
         outputDipoles[i] = inducedDipoles[i];
     delete referenceTholeDipoleForce;
@@ -243,10 +249,10 @@ void ReferenceCalcTholeDipoleForceKernel::getLabFramePermanentDipoles(ContextImp
     vector<Vec3>& posData = extractPositions(context);
     
     // Retrieve the permanent dipoles in the lab frame.
-    
+
     vector<Vec3> labFramePermanentDipoles;
-    referenceTholeDipoleForce->calculateLabFramePermanentDipoles(posData, charges, dipoles, polarity, 
-            tholes, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, covalentInfo, labFramePermanentDipoles);
+    referenceTholeDipoleForce->calculateLabFramePermanentDipoles(posData, charges, dipoles, polarity,
+            axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, covalentInfo, labFramePermanentDipoles);
     for (int i = 0; i < numParticles; i++)
         outputDipoles[i] = labFramePermanentDipoles[i];
     delete referenceTholeDipoleForce;
@@ -262,10 +268,10 @@ void ReferenceCalcTholeDipoleForceKernel::getTotalDipoles(ContextImpl& context, 
     vector<Vec3>& posData = extractPositions(context);
     
     // Retrieve the total dipoles.
-    
+
     vector<Vec3> totalDipoles;
     referenceTholeDipoleForce->calculateTotalDipoles(posData, charges, dipoles, polarity,
-            tholes, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, covalentInfo, totalDipoles);
+            axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, covalentInfo, totalDipoles);
 
     for (int i = 0; i < numParticles; i++)
         outputDipoles[i] = totalDipoles[i];
@@ -283,7 +289,7 @@ void ReferenceCalcTholeDipoleForceKernel::getElectrostaticPotential(ContextImpl&
         grid[ii] = inputGrid[ii];
     }
     referenceTholeDipoleForce->calculateElectrostaticPotential(posData, charges, dipoles, polarity,
-                                                               tholes, axisTypes, 
+                                                               axisTypes,
                                                                multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
                                                                covalentInfo, grid, potential);
 
@@ -307,7 +313,7 @@ void ReferenceCalcTholeDipoleForceKernel::getSystemMultipoleMoments(ContextImpl&
     ReferenceTholeDipoleForce* referenceTholeDipoleForce = setupReferenceTholeDipoleForce(context);
     vector<Vec3>& posData = extractPositions(context);
     referenceTholeDipoleForce->calculateTholeDipoleSystemMultipoleMoments(masses, posData, charges, dipoles, polarity,
-                                                               tholes, axisTypes, 
+                                                               axisTypes,
                                                                multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
                                                                covalentInfo, outputMultipoleMoments);
 
@@ -318,19 +324,22 @@ void ReferenceCalcTholeDipoleForceKernel::copyParametersToContext(ContextImpl& c
     if (numParticles != force.getNumParticles())
         throw OpenMMException("updateParametersInContext: The number of particles has changed");
 
-    // Record the values.
+    // Update global Thole damping parameters
+    tholeDampingType = force.getTholeDampingType();
+    tholeDampingParameter = force.getTholeDampingParameter();
+
+    // Record the particle values.
     int dipoleIndex = 0;
     for (int i = 0; i < numParticles; ++i) {
         int axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY;
-        double charge, tholeD, polarityD;
+        double charge, polarityD;
         std::vector<double> dipolesD;
-        force.getParticleParameters(i, charge, dipolesD, polarityD, tholeD, axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY);
+        force.getParticleParameters(i, charge, dipolesD, polarityD, axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY);
         axisTypes[i] = axisType;
         multipoleAtomZs[i] = multipoleAtomZ;
         multipoleAtomXs[i] = multipoleAtomX;
         multipoleAtomYs[i] = multipoleAtomY;
         charges[i] = charge;
-        tholes[i] = tholeD;
         polarity[i] = polarityD;
         dipoles[dipoleIndex++] = dipolesD[0];
         dipoles[dipoleIndex++] = dipolesD[1];

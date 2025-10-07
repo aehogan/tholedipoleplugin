@@ -123,10 +123,38 @@ public:
 
     /**
      * Set polarization type.
-     * 
+     *
      * @param polarizationType polarization type
      */
     void setPolarizationType(PolarizationType polarizationType);
+
+    /**
+     * Get Thole damping type.
+     *
+     * @return Thole damping type
+     */
+    TholeDipoleForce::TholeDampingType getTholeDampingType() const;
+
+    /**
+     * Set Thole damping type.
+     *
+     * @param tholeDampingType Thole damping type
+     */
+    void setTholeDampingType(TholeDipoleForce::TholeDampingType tholeDampingType);
+
+    /**
+     * Get global Thole damping parameter.
+     *
+     * @return Thole damping parameter
+     */
+    double getTholeDampingParameter() const;
+
+    /**
+     * Set global Thole damping parameter.
+     *
+     * @param tholeDampingParameter Thole damping parameter
+     */
+    void setTholeDampingParameter(double tholeDampingParameter);
 
     /**
      * Get flag indicating if mutual induced dipoles are converged.
@@ -200,7 +228,6 @@ public:
      * @param charges                   scalar charges for each particle
      * @param dipoles                   molecular frame dipoles for each particle
      * @param polarizabilities          polarizabilities for each particle
-     * @param tholeDampingFactors       Thole damping factors for each particle
      * @param axisTypes                 axis type (Z-then-X, ...) for each particle
      * @param multipoleAtomZs           indices of particle specifying the molecular frame z-axis for each particle
      * @param multipoleAtomXs           indices of particle specifying the molecular frame x-axis for each particle
@@ -214,7 +241,6 @@ public:
                                    const std::vector<double>& charges,
                                    const std::vector<double>& dipoles,
                                    const std::vector<double>& polarizabilities,
-                                   const std::vector<double>& tholeDampingFactors,
                                    const std::vector<int>& axisTypes,
                                    const std::vector<int>& multipoleAtomZs,
                                    const std::vector<int>& multipoleAtomXs,
@@ -229,7 +255,6 @@ public:
      * @param charges                   scalar charges for each particle
      * @param dipoles                   molecular frame dipoles for each particle
      * @param polarizabilities          polarizabilities for each particle
-     * @param tholeDampingFactors       Thole damping factors for each particle
      * @param axisTypes                 axis type (Z-then-X, ...) for each particle
      * @param multipoleAtomZs           indices of particle specifying the molecular frame z-axis for each particle
      * @param multipoleAtomXs           indices of particle specifying the molecular frame x-axis for each particle
@@ -241,7 +266,6 @@ public:
                                  const std::vector<double>& charges,
                                  const std::vector<double>& dipoles,
                                  const std::vector<double>& polarizabilities,
-                                 const std::vector<double>& tholeDampingFactors,
                                  const std::vector<int>& axisTypes,
                                  const std::vector<int>& multipoleAtomZs,
                                  const std::vector<int>& multipoleAtomXs,
@@ -256,7 +280,6 @@ public:
      * @param charges                   scalar charges for each particle
      * @param dipoles                   molecular frame dipoles for each particle
      * @param polarizabilities          polarizabilities for each particle
-     * @param tholeDampingFactors       Thole damping factors for each particle
      * @param axisTypes                 axis type (Z-then-X, ...) for each particle
      * @param multipoleAtomZs           indices of particle specifying the molecular frame z-axis for each particle
      * @param multipoleAtomXs           indices of particle specifying the molecular frame x-axis for each particle
@@ -268,7 +291,6 @@ public:
                                            const std::vector<double>& charges,
                                            const std::vector<double>& dipoles,
                                            const std::vector<double>& polarizabilities,
-                                           const std::vector<double>& tholeDampingFactors,
                                            const std::vector<int>& axisTypes,
                                            const std::vector<int>& multipoleAtomZs,
                                            const std::vector<int>& multipoleAtomXs,
@@ -283,7 +305,6 @@ public:
      * @param charges                   scalar charges for each particle
      * @param dipoles                   molecular frame dipoles for each particle
      * @param polarizabilities          polarizabilities for each particle
-     * @param tholeDampingFactors       Thole damping factors for each particle
      * @param axisTypes                 axis type (Z-then-X, ...) for each particle
      * @param multipoleAtomZs           indices of particle specifying the molecular frame z-axis for each particle
      * @param multipoleAtomXs           indices of particle specifying the molecular frame x-axis for each particle
@@ -295,7 +316,6 @@ public:
                                const std::vector<double>& charges,
                                const std::vector<double>& dipoles,
                                const std::vector<double>& polarizabilities,
-                               const std::vector<double>& tholeDampingFactors,
                                const std::vector<int>& axisTypes,
                                const std::vector<int>& multipoleAtomZs,
                                const std::vector<int>& multipoleAtomXs,
@@ -311,7 +331,6 @@ public:
      * @param charges                   scalar charges for each particle
      * @param dipoles                   molecular frame dipoles for each particle
      * @param polarizabilities          polarizabilities for each particle
-     * @param tholeDampingFactors       Thole damping factors for each particle
      * @param axisTypes                 axis type (Z-then-X, ...) for each particle
      * @param multipoleAtomZs           indices of particle specifying the molecular frame z-axis for each particle
      * @param multipoleAtomXs           indices of particle specifying the molecular frame x-axis for each particle
@@ -324,7 +343,6 @@ public:
                                                     const std::vector<double>& charges,
                                                     const std::vector<double>& dipoles,
                                                     const std::vector<double>& polarizabilities,
-                                                    const std::vector<double>& tholeDampingFactors,
                                                     const std::vector<int>& axisTypes,
                                                     const std::vector<int>& multipoleAtomZs,
                                                     const std::vector<int>& multipoleAtomXs,
@@ -339,7 +357,6 @@ public:
      * @param charges                   scalar charges for each particle
      * @param dipoles                   molecular frame dipoles for each particle
      * @param polarizabilities          polarizabilities for each particle
-     * @param tholeDampingFactors       Thole damping factors for each particle
      * @param axisTypes                 axis type (Z-then-X, ...) for each particle
      * @param multipoleAtomZs           indices of particle specifying the molecular frame z-axis for each particle
      * @param multipoleAtomXs           indices of particle specifying the molecular frame x-axis for each particle
@@ -352,7 +369,6 @@ public:
                                          const std::vector<double>& charges,
                                          const std::vector<double>& dipoles,
                                          const std::vector<double>& polarizabilities,
-                                         const std::vector<double>& tholeDampingFactors,
                                          const std::vector<int>& axisTypes,
                                          const std::vector<int>& multipoleAtomZs,
                                          const std::vector<int>& multipoleAtomXs,
@@ -374,7 +390,6 @@ protected:
         Vec3 dipole;
         Vec3 inducedDipole;
         double polarizability;
-        double tholeDamping;
         int axisType;
         int multipoleAtomZ;
         int multipoleAtomX;
@@ -386,6 +401,7 @@ protected:
     unsigned int _numParticles;
     NonbondedMethod _nonbondedMethod;
     PolarizationType _polarizationType;
+    TholeDipoleForce::TholeDampingType _tholeDampingType;
 
     double _electric;
     double _dielectric;
@@ -405,6 +421,7 @@ protected:
     double _mutualInducedDipoleEpsilon;
     double _mutualInducedDipoleTargetEpsilon;
     double _debye;
+    double _tholeDampingParameter;
 
     /**
      * Helper constructor method to centralize initialization of objects.
@@ -418,14 +435,12 @@ protected:
      * @param charges             charges
      * @param dipoles             dipoles
      * @param polarizabilities    polarizabilities
-     * @param tholeDampingFactors Thole damping factors
      * @param particleData        output data struct
      */
     void loadParticleData(const std::vector<OpenMM::Vec3>& particlePositions,
                           const std::vector<double>& charges,
                           const std::vector<double>& dipoles,
                           const std::vector<double>& polarizabilities,
-                          const std::vector<double>& tholeDampingFactors,
                           std::vector<TholeDipoleParticleData>& particleData) const;
 
     /**
@@ -490,7 +505,7 @@ protected:
      * 
      * @param particleData      vector of particle positions and parameters
      */
-    virtual void convergeInducedDipolesByDIIS(const std::vector<TholeDipoleParticleData>& particleData);
+    virtual void convergeInducedDipolesByPCG(const std::vector<TholeDipoleParticleData>& particleData);
 
     /**
      * Converge induced dipoles using extrapolated perturbation theory.
@@ -555,7 +570,6 @@ protected:
                           const std::vector<double>& charges,
                           const std::vector<double>& dipoles,
                           const std::vector<double>& polarizabilities,
-                          const std::vector<double>& tholeDampingFactors,
                           const std::vector<int>& axisTypes,
                           const std::vector<int>& multipoleAtomZs,
                           const std::vector<int>& multipoleAtomXs,
@@ -594,8 +608,6 @@ protected:
                                        double iScale,
                                        double polarizabilityI,
                                        double polarizabilityJ,
-                                       double tholeDampingI,
-                                       double tholeDampingJ,
                                        const std::vector<Vec3>& inducedDipole,
                                        std::vector<Vec3>& field) const;
 

@@ -49,11 +49,10 @@ void testSingleParticle() {
     d[0] = 0.1;  // Dipole along x
     
     double charge = 1.0;
-    double thole = 0.39;
     double polarizability = 0.001;
-    
+
     // Single particle - no axis type needed since there's no reference particle
-    force->addParticle(charge, d, polarizability, thole, 
+    force->addParticle(charge, d, polarizability,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
     
     vector<Vec3> positions(1);

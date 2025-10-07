@@ -91,9 +91,9 @@ void testTholeDipoleWaterPMEMutualPolarization() {
     std::vector<double> hydrogenMolecularDipole = {-2.0420949e-3, 0.0, -3.0787530e-3};
 
     for (unsigned int jj = 0; jj < numberOfParticles; jj += 3) {
-        tholeDipoleForce->addParticle(-5.1966000e-1, oxygenMolecularDipole, 8.3700000e-4, 3.9000000e-1, 1, jj+1, jj+2, -1);
-        tholeDipoleForce->addParticle(2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4, 3.9000000e-1, 0, jj, jj+2, -1);
-        tholeDipoleForce->addParticle(2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4, 3.9000000e-1, 0, jj, jj+1, -1);
+        tholeDipoleForce->addParticle(-5.1966000e-1, oxygenMolecularDipole, 8.3700000e-4, 1, jj+1, jj+2, -1);
+        tholeDipoleForce->addParticle(2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4, 0, jj, jj+2, -1);
+        tholeDipoleForce->addParticle(2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4, 0, jj, jj+1, -1);
     }
 
     // Covalent maps (same as in setupAndGetForcesEnergyTholeDipoleWater)

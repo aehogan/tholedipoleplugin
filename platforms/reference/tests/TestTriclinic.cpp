@@ -61,9 +61,9 @@ void testTriclinic() {
 
     for (int i = 0; i < 8; i++) {
         int atom1 = 3*i, atom2 = 3*i+1, atom3 = 3*i+2;
-        force->addParticle(o_charge, o_dipole, 0.001*0.92, 0.39, 1, atom2, atom3, -1);
-        force->addParticle(h_charge, h_dipole, 0.001*0.539, 0.39, 0, atom1, atom3, -1);
-        force->addParticle(h_charge, h_dipole, 0.001*0.539, 0.39, 0, atom1, atom2, -1);
+        force->addParticle(o_charge, o_dipole, 0.001*0.92, 1, atom2, atom3, -1);
+        force->addParticle(h_charge, h_dipole, 0.001*0.539, 0, atom1, atom3, -1);
+        force->addParticle(h_charge, h_dipole, 0.001*0.539, 0, atom1, atom2, -1);
         vector<int> coval1_12(2);
         coval1_12[0] = atom2;
         coval1_12[1] = atom3;

@@ -49,13 +49,12 @@ void testAllZeros() {
     // System with all parameters set to zero
     vector<double> zeroDipole(3, 0.0);  // Zero dipole moments
     double zeroCharge = 0.0;  // Zero charges
-    double thole = 0.39;  // Thole parameter still set (shouldn't matter with zero polarizability)
     double zeroPolarizability = 0.0;  // Zero polarizabilities
-    
+
     // Both particles have everything set to zero
-    force->addParticle(zeroCharge, zeroDipole, zeroPolarizability, thole, 
+    force->addParticle(zeroCharge, zeroDipole, zeroPolarizability,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
-    force->addParticle(zeroCharge, zeroDipole, zeroPolarizability, thole,
+    force->addParticle(zeroCharge, zeroDipole, zeroPolarizability,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
     
     vector<Vec3> positions(2);

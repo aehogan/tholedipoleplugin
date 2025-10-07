@@ -20,17 +20,16 @@ void testZOnly3Particle() {
         {0.0, 0.0, 0.05},
         {0.0, 0.0, 0.025}
     };
-    double thole = 0.39;
     double polarity[] = {0.001, 0.001, 0.001};
-    
+
     for (int i = 0; i < 3; i++) {
         vector<double> d;
         for (int j = 0; j < 3; j++)
             d.push_back(dipole[i][j]);
-        
+
         // For Z-only axis, use another particle as Z-axis reference
         int zAxis = (i + 1) % 3;  // Circular reference
-        force->addParticle(charge[i], d, polarity[i], thole,
+        force->addParticle(charge[i], d, polarity[i],
                           TholeDipoleForce::ZOnly, zAxis, -1, -1);
     }
     

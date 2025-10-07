@@ -45,7 +45,7 @@ void testParticleTotalDipoles() {
 
     System system;
     TholeDipoleForce* tholeDipoleForce = new TholeDipoleForce();;
-    setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Mutual,
+    setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Direct,
                                              cutoff, inputPmeGridDimension);
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
     Context context(system, integrator, *platform);

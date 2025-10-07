@@ -53,25 +53,24 @@ void testZXPair() {
         {0.1, 0.0, 0.0},    // dipole along x
         {0.0, 0.1, 0.0}     // dipole along y
     };
-    double thole = 0.39;
     double polarizability[] = {0.001, 0.001, 0.001};
-    
+
     // Particle 0: Z-X axis type - Z-axis defined by particle 1, X-axis by particle 2
     vector<double> d0;
     for (int j = 0; j < 3; j++) d0.push_back(dipole[0][j]);
-    force->addParticle(charge[0], d0, polarizability[0], thole, 
+    force->addParticle(charge[0], d0, polarizability[0],
                       TholeDipoleForce::ZThenX, 1, 2, -1);
-    
+
     // Particle 1: Reference for Z-axis
     vector<double> d1;
     for (int j = 0; j < 3; j++) d1.push_back(dipole[1][j]);
-    force->addParticle(charge[1], d1, polarizability[1], thole,
+    force->addParticle(charge[1], d1, polarizability[1],
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
-    
+
     // Particle 2: Reference for X-axis
     vector<double> d2;
     for (int j = 0; j < 3; j++) d2.push_back(dipole[2][j]);
-    force->addParticle(charge[2], d2, polarizability[2], thole,
+    force->addParticle(charge[2], d2, polarizability[2],
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
     
     // Create equivalent AMOEBA system

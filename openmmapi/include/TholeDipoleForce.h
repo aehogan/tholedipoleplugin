@@ -108,6 +108,13 @@ public:
         CovalentEnd = 4
     };
 
+    enum TholeDampingType {
+        NoDamping = 0,    // No damping
+        Exponential = 1,  // ρ₁ from Thole (1981)
+        Amoeba = 2,       // ρ₂ from Thole (1981)
+        Linear = 3        // ρ₄ from Thole (1981)
+    };
+
     /**
      * Create a TholeDipoleForce.
      */
@@ -139,6 +146,28 @@ public:
      * Set the polarization type
      */
     void setPolarizationType(PolarizationType type);
+
+    /**
+     * Get the Thole damping type
+     */
+    TholeDampingType getTholeDampingType() const;
+
+    /**
+     * Set the Thole damping type
+     */
+    void setTholeDampingType(TholeDampingType type);
+
+    /**
+     * Get the global Thole damping parameter
+     */
+    double getTholeDampingParameter() const;
+
+    /**
+     * Set the global Thole damping parameter
+     *
+     * @param parameter   the global Thole damping parameter
+     */
+    void setTholeDampingParameter(double parameter);
 
     /**
      * Get the cutoff distance (in nm) being used for nonbonded interactions.  If the NonbondedMethod in use
@@ -205,7 +234,6 @@ public:
      * @param charge               the particle's charge
      * @param molecularDipole      the particle's molecular dipole (vector of size 3)
      * @param polarizability       the particle's isotropic polarizability
-     * @param tholeDamping         the particle's Thole damping parameter
      * @param axisType             the particle's axis type
      * @param multipoleAtomZ       index of first atom used in constructing lab<->molecular frames (-1 for none)
      * @param multipoleAtomX       index of second atom used in constructing lab<->molecular frames (-1 for none)
@@ -214,7 +242,7 @@ public:
      * @return the index of the particle that was added
      */
     int addParticle(double charge, const std::vector<double>& molecularDipole, double polarizability,
-                    double tholeDamping, int axisType = NoAxisType, int multipoleAtomZ = -1,
+                    int axisType = NoAxisType, int multipoleAtomZ = -1,
                     int multipoleAtomX = -1, int multipoleAtomY = -1);
 
     /**
@@ -224,14 +252,13 @@ public:
      * @param[out] charge               the particle's charge
      * @param[out] molecularDipole      the particle's molecular dipole (vector of size 3)
      * @param[out] polarizability       the particle's isotropic polarizability
-     * @param[out] tholeDamping         the particle's Thole damping parameter
      * @param[out] axisType             the particle's axis type
      * @param[out] multipoleAtomZ       index of first atom used in constructing lab<->molecular frames
      * @param[out] multipoleAtomX       index of second atom used in constructing lab<->molecular frames
      * @param[out] multipoleAtomY       index of third atom used in constructing lab<->molecular frames
      */
     void getParticleParameters(int index, double& charge, std::vector<double>& molecularDipole,
-                               double& polarizability, double& tholeDamping, int& axisType,
+                               double& polarizability, int& axisType,
                                int& multipoleAtomZ, int& multipoleAtomX, int& multipoleAtomY) const;
 
     /**
@@ -241,14 +268,13 @@ public:
      * @param charge               the particle's charge
      * @param molecularDipole      the particle's molecular dipole (vector of size 3)
      * @param polarizability       the particle's isotropic polarizability
-     * @param tholeDamping         the particle's Thole damping parameter
      * @param axisType             the particle's axis type
      * @param multipoleAtomZ       index of first atom used in constructing lab<->molecular frames
      * @param multipoleAtomX       index of second atom used in constructing lab<->molecular frames
      * @param multipoleAtomY       index of third atom used in constructing lab<->molecular frames
      */
     void setParticleParameters(int index, double charge, const std::vector<double>& molecularDipole,
-                               double polarizability, double tholeDamping, int axisType,
+                               double polarizability, int axisType,
                                int multipoleAtomZ, int multipoleAtomX, int multipoleAtomY);
 
     /**
@@ -415,6 +441,7 @@ protected:
 private:
     NonbondedMethod nonbondedMethod;
     PolarizationType polarizationType;
+    TholeDampingType tholeDampingType;
     double cutoffDistance;
     double alpha;
     int pmeBSplineOrder, nx, ny, nz;
@@ -422,7 +449,8 @@ private:
     std::vector<double> extrapolationCoefficients;
     double mutualInducedTargetEpsilon;
     double ewaldErrorTol;
-    
+    double tholeDampingParameter;
+
     class ParticleInfo;
     std::vector<ParticleInfo> particles;
 };
@@ -434,20 +462,20 @@ private:
 class TholeDipoleForce::ParticleInfo {
 public:
     int axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY;
-    double charge, polarizability, tholeDamping;
+    double charge, polarizability;
     std::vector<double> molecularDipole;
     std::vector<std::vector<int> > covalentInfo;
 
     ParticleInfo() {
         axisType = multipoleAtomZ = multipoleAtomX = multipoleAtomY = -1;
-        charge = polarizability = tholeDamping = 0.0;
+        charge = polarizability = 0.0;
         molecularDipole.resize(3);
     }
 
     ParticleInfo(double charge, const std::vector<double>& inputMolecularDipole, double polarizability,
-                 double tholeDamping, int axisType, int multipoleAtomZ, int multipoleAtomX, int multipoleAtomY) :
+                 int axisType, int multipoleAtomZ, int multipoleAtomX, int multipoleAtomY) :
         axisType(axisType), multipoleAtomZ(multipoleAtomZ), multipoleAtomX(multipoleAtomX), multipoleAtomY(multipoleAtomY),
-        charge(charge), polarizability(polarizability), tholeDamping(tholeDamping) {
+        charge(charge), polarizability(polarizability) {
 
         covalentInfo.resize(CovalentEnd);
 

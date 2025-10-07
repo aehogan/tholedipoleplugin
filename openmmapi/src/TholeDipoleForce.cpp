@@ -40,9 +40,10 @@ using namespace TholeDipolePlugin;
 using std::string;
 using std::vector;
 
-TholeDipoleForce::TholeDipoleForce() : nonbondedMethod(NoCutoff), polarizationType(Mutual), pmeBSplineOrder(5), 
-                                       cutoffDistance(1.0), ewaldErrorTol(1e-4), mutualInducedMaxIterations(60),
-                                       mutualInducedTargetEpsilon(1e-5), alpha(0.0), nx(0), ny(0), nz(0) {
+TholeDipoleForce::TholeDipoleForce() : nonbondedMethod(NoCutoff), polarizationType(Mutual), tholeDampingType(Amoeba),
+                                       pmeBSplineOrder(5), cutoffDistance(1.0), ewaldErrorTol(1e-4),
+                                       mutualInducedMaxIterations(60), mutualInducedTargetEpsilon(1e-5),
+                                       alpha(0.0), nx(0), ny(0), nz(0), tholeDampingParameter(0.39) {
     // Default extrapolation coefficients for induced dipoles
     extrapolationCoefficients.push_back(-0.154);
     extrapolationCoefficients.push_back(0.017);
@@ -66,6 +67,22 @@ TholeDipoleForce::PolarizationType TholeDipoleForce::getPolarizationType() const
 
 void TholeDipoleForce::setPolarizationType(TholeDipoleForce::PolarizationType type) {
     polarizationType = type;
+}
+
+TholeDipoleForce::TholeDampingType TholeDipoleForce::getTholeDampingType() const {
+    return tholeDampingType;
+}
+
+void TholeDipoleForce::setTholeDampingType(TholeDipoleForce::TholeDampingType type) {
+    tholeDampingType = type;
+}
+
+double TholeDipoleForce::getTholeDampingParameter() const {
+    return tholeDampingParameter;
+}
+
+void TholeDipoleForce::setTholeDampingParameter(double parameter) {
+    tholeDampingParameter = parameter;
 }
 
 void TholeDipoleForce::setExtrapolationCoefficients(const std::vector<double> &coefficients) {
@@ -131,19 +148,18 @@ void TholeDipoleForce::setEwaldErrorTolerance(double tol) {
 }
 
 int TholeDipoleForce::addParticle(double charge, const std::vector<double>& molecularDipole, double polarizability,
-                                  double tholeDamping, int axisType, int multipoleAtomZ, 
+                                  int axisType, int multipoleAtomZ,
                                   int multipoleAtomX, int multipoleAtomY) {
-    particles.push_back(ParticleInfo(charge, molecularDipole, polarizability, tholeDamping, 
+    particles.push_back(ParticleInfo(charge, molecularDipole, polarizability,
                                     axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY));
     return particles.size()-1;
 }
 
 void TholeDipoleForce::getParticleParameters(int index, double& charge, std::vector<double>& molecularDipole,
-                                             double& polarizability, double& tholeDamping, int& axisType,
+                                             double& polarizability, int& axisType,
                                              int& multipoleAtomZ, int& multipoleAtomX, int& multipoleAtomY) const {
     charge              = particles[index].charge;
     polarizability      = particles[index].polarizability;
-    tholeDamping        = particles[index].tholeDamping;
 
     molecularDipole.resize(3);
     molecularDipole[0]  = particles[index].molecularDipole[0];
@@ -157,11 +173,10 @@ void TholeDipoleForce::getParticleParameters(int index, double& charge, std::vec
 }
 
 void TholeDipoleForce::setParticleParameters(int index, double charge, const std::vector<double>& molecularDipole,
-                                             double polarizability, double tholeDamping, int axisType,
+                                             double polarizability, int axisType,
                                              int multipoleAtomZ, int multipoleAtomX, int multipoleAtomY) {
     particles[index].charge              = charge;
     particles[index].polarizability      = polarizability;
-    particles[index].tholeDamping        = tholeDamping;
 
     particles[index].molecularDipole[0]  = molecularDipole[0];
     particles[index].molecularDipole[1]  = molecularDipole[1];

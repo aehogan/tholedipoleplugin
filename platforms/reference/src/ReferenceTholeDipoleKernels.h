@@ -140,10 +140,10 @@ private:
     
     TholeDipoleForce::NonbondedMethod nonbondedMethod;
     TholeDipoleForce::PolarizationType polarizationType;
-    
+    TholeDipoleForce::TholeDampingType tholeDampingType;
+
     std::vector<double> charges;
     std::vector<double> dipoles;
-    std::vector<double> tholes;
     std::vector<double> polarity;
     std::vector<int> axisTypes;
     std::vector<int> multipoleAtomZs;
@@ -152,6 +152,7 @@ private:
     std::vector<std::vector<std::vector<int> > > covalentInfo;
     std::vector<double> extrapolationCoefficients;
     std::vector<int> pmeGridDimension;
+    double tholeDampingParameter;
 };
 
 } // namespace TholeDipolePlugin

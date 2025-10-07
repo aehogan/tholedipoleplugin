@@ -49,12 +49,14 @@ void testSerialization() {
     force.setForceGroup(3);
     force.setNonbondedMethod(TholeDipoleForce::PME);
     force.setPolarizationType(TholeDipoleForce::Mutual);
+    force.setTholeDampingType(TholeDipoleForce::Amoeba);
+    force.setTholeDampingParameter(0.39);
     force.setCutoffDistance(0.9);
     force.setEwaldErrorTolerance(1.0e-05);
     force.setMutualInducedMaxIterations(200);
     force.setMutualInducedTargetEpsilon(1.0e-05);
     force.setPMEParameters(0.5, 32, 32, 32);
-    
+
     vector<double> extrapolationCoefficients;
     extrapolationCoefficients.push_back(0.0);
     extrapolationCoefficients.push_back(-0.1);
@@ -67,8 +69,8 @@ void testSerialization() {
         molecularDipole.push_back(0.1 * i);
         molecularDipole.push_back(0.2 * i);
         molecularDipole.push_back(0.3 * i);
-        
-        int particleIndex = force.addParticle(i + 1.0, molecularDipole, 0.5 + 0.1 * i, 0.8 + 0.05 * i,
+
+        int particleIndex = force.addParticle(i + 1.0, molecularDipole, 0.5 + 0.1 * i,
                                              TholeDipoleForce::ZThenX, i + 1, i + 2, i + 3);
         
         // Add some covalent maps
@@ -92,6 +94,8 @@ void testSerialization() {
     ASSERT_EQUAL(force.getForceGroup(), force2.getForceGroup());
     ASSERT_EQUAL(force.getNonbondedMethod(), force2.getNonbondedMethod());
     ASSERT_EQUAL(force.getPolarizationType(), force2.getPolarizationType());
+    ASSERT_EQUAL(force.getTholeDampingType(), force2.getTholeDampingType());
+    ASSERT_EQUAL(force.getTholeDampingParameter(), force2.getTholeDampingParameter());
     ASSERT_EQUAL(force.getCutoffDistance(), force2.getCutoffDistance());
     ASSERT_EQUAL(force.getEwaldErrorTolerance(), force2.getEwaldErrorTolerance());
     ASSERT_EQUAL(force.getMutualInducedMaxIterations(), force2.getMutualInducedMaxIterations());
@@ -119,19 +123,18 @@ void testSerialization() {
     // Check particles
     ASSERT_EQUAL(force.getNumParticles(), force2.getNumParticles());
     for (int i = 0; i < force.getNumParticles(); i++) {
-        double charge1, charge2, polarizability1, polarizability2, tholeDamping1, tholeDamping2;
+        double charge1, charge2, polarizability1, polarizability2;
         vector<double> molecularDipole1, molecularDipole2;
         int axisType1, axisType2, multipoleAtomZ1, multipoleAtomZ2;
         int multipoleAtomX1, multipoleAtomX2, multipoleAtomY1, multipoleAtomY2;
-        
-        force.getParticleParameters(i, charge1, molecularDipole1, polarizability1, tholeDamping1,
+
+        force.getParticleParameters(i, charge1, molecularDipole1, polarizability1,
                                    axisType1, multipoleAtomZ1, multipoleAtomX1, multipoleAtomY1);
-        force2.getParticleParameters(i, charge2, molecularDipole2, polarizability2, tholeDamping2,
+        force2.getParticleParameters(i, charge2, molecularDipole2, polarizability2,
                                     axisType2, multipoleAtomZ2, multipoleAtomX2, multipoleAtomY2);
-        
+
         ASSERT_EQUAL(charge1, charge2);
         ASSERT_EQUAL(polarizability1, polarizability2);
-        ASSERT_EQUAL(tholeDamping1, tholeDamping2);
         ASSERT_EQUAL(axisType1, axisType2);
         ASSERT_EQUAL(multipoleAtomZ1, multipoleAtomZ2);
         ASSERT_EQUAL(multipoleAtomX1, multipoleAtomX2);

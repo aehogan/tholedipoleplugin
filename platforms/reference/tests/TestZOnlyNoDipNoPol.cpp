@@ -16,13 +16,12 @@ void testZOnlyNoDipNoPol() {
     vector<double> d(3, 0.0);
     double charge1 = 0.5;
     double charge2 = -0.5;
-    double thole = 0.39;
     double pol = 0.0;
-    
-    force->addParticle(charge1, d, pol, thole, 
+
+    force->addParticle(charge1, d, pol,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
-    
-    force->addParticle(charge2, d, pol, thole,
+
+    force->addParticle(charge2, d, pol,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
     
     vector<Vec3> positions(2);

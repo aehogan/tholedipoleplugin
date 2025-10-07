@@ -45,7 +45,7 @@ void testParticleInducedDipoles() {
 
     System system;
     TholeDipoleForce* tholeDipoleForce = new TholeDipoleForce();;
-    setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Mutual,
+    setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Direct,
                                              cutoff, inputPmeGridDimension);
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
     Context context(system, integrator, *platform);
@@ -90,10 +90,120 @@ void testParticleInducedDipoles() {
     ASSERT_EQUAL_TOL(0.0, maxDiff, 1e-5);
 }
 
+void testParticleInducedDipolesExtrapolated() {
+    int numberOfParticles     = 8;
+    int inputPmeGridDimension = 0;
+    double cutoff             = 9000000.0;
+    std::vector<Vec3> forces;
+    double energy;
+
+    System system;
+    TholeDipoleForce* tholeDipoleForce = new TholeDipoleForce();;
+    setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Extrapolated,
+                                             cutoff, inputPmeGridDimension);
+    LangevinIntegrator integrator(0.0, 0.1, 0.01);
+    Context context(system, integrator, *platform);
+    getForcesEnergyTholeDipoleAmmonia(context, forces, energy);
+
+    std::vector<Vec3> tholeDipole;
+    tholeDipoleForce->getInducedDipoles(context, tholeDipole);
+
+    std::cout << "TholeDipole Induced Dipoles:" << std::endl;
+    for (int i = 0; i < numberOfParticles; i++) {
+        std::cout << "  Particle " << i << ": " << tholeDipole[i] << std::endl;
+    }
+
+    // Compare with AMOEBA
+    System amoebaSystem;
+    for (int i = 0; i < numberOfParticles; i++)
+        amoebaSystem.addParticle(1.0);
+
+    AmoebaMultipoleForce* equivalentForce = createEquivalentAmoebaForce(tholeDipoleForce);
+    amoebaSystem.addForce(equivalentForce);
+
+    LangevinIntegrator amoebaIntegrator(0.0, 0.1, 0.01);
+    Context amoebaContext(amoebaSystem, amoebaIntegrator);
+
+    std::vector<Vec3> positions = context.getState(State::Positions).getPositions();
+    amoebaContext.setPositions(positions);
+    amoebaContext.getState(State::Forces | State::Energy);
+
+    std::vector<Vec3> amoebaDipole;
+    equivalentForce->getInducedDipoles(amoebaContext, amoebaDipole);
+
+    std::cout << "\nAMOEBA Induced Dipoles:" << std::endl;
+    double maxDiff = 0.0;
+    for (int i = 0; i < numberOfParticles; i++) {
+        std::cout << "  Particle " << i << ": " << amoebaDipole[i] << std::endl;
+        Vec3 diff = tholeDipole[i] - amoebaDipole[i];
+        double magnitude = sqrt(diff.dot(diff));
+        maxDiff = std::max(maxDiff, magnitude);
+    }
+
+    std::cout << "\nMax induced dipole difference: " << maxDiff << std::endl;
+    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e+1);
+}
+
+void testParticleInducedDipolesMutual() {
+    int numberOfParticles     = 8;
+    int inputPmeGridDimension = 0;
+    double cutoff             = 9000000.0;
+    std::vector<Vec3> forces;
+    double energy;
+
+    System system;
+    TholeDipoleForce* tholeDipoleForce = new TholeDipoleForce();;
+    setupTholeDipoleAmmonia(system, tholeDipoleForce, TholeDipoleForce::NoCutoff, TholeDipoleForce::Mutual,
+                                             cutoff, inputPmeGridDimension);
+    LangevinIntegrator integrator(0.0, 0.1, 0.01);
+    Context context(system, integrator, *platform);
+    getForcesEnergyTholeDipoleAmmonia(context, forces, energy);
+
+    std::vector<Vec3> tholeDipole;
+    tholeDipoleForce->getInducedDipoles(context, tholeDipole);
+
+    std::cout << "TholeDipole Induced Dipoles:" << std::endl;
+    for (int i = 0; i < numberOfParticles; i++) {
+        std::cout << "  Particle " << i << ": " << tholeDipole[i] << std::endl;
+    }
+
+    // Compare with AMOEBA
+    System amoebaSystem;
+    for (int i = 0; i < numberOfParticles; i++)
+        amoebaSystem.addParticle(1.0);
+
+    AmoebaMultipoleForce* equivalentForce = createEquivalentAmoebaForce(tholeDipoleForce);
+    amoebaSystem.addForce(equivalentForce);
+
+    LangevinIntegrator amoebaIntegrator(0.0, 0.1, 0.01);
+    Context amoebaContext(amoebaSystem, amoebaIntegrator);
+
+    std::vector<Vec3> positions = context.getState(State::Positions).getPositions();
+    amoebaContext.setPositions(positions);
+    amoebaContext.getState(State::Forces | State::Energy);
+
+    std::vector<Vec3> amoebaDipole;
+    equivalentForce->getInducedDipoles(amoebaContext, amoebaDipole);
+
+    std::cout << "\nAMOEBA Induced Dipoles:" << std::endl;
+    double maxDiff = 0.0;
+    for (int i = 0; i < numberOfParticles; i++) {
+        std::cout << "  Particle " << i << ": " << amoebaDipole[i] << std::endl;
+        Vec3 diff = tholeDipole[i] - amoebaDipole[i];
+        double magnitude = sqrt(diff.dot(diff));
+        maxDiff = std::max(maxDiff, magnitude);
+    }
+
+    std::cout << "\nMax induced dipole difference: " << maxDiff << std::endl;
+    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e+1);
+}
+
 int main(int argc, char* argv[]) {
     try {
         setupKernels(argc, argv);
         testParticleInducedDipoles();
+        testParticleInducedDipolesExtrapolated();
+        testParticleInducedDipolesMutual();
     }
     catch (const std::exception& e) {
         std::cout << "exception: " << e.what() << std::endl;

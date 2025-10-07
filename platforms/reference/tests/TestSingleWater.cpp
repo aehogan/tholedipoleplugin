@@ -56,12 +56,12 @@ void testSingleWater() {
 
     // Add oxygen (Bisector axis type, uses both H as references)
     tholeDipoleForce->addParticle(-5.1966000e-1, oxygenMolecularDipole, 8.3700000e-4,
-                                  3.9000000e-1, 1, 1, 2, -1);
+                                  1, 1, 2, -1);
     // Add hydrogens (ZOnly axis type, uses O as reference)
     tholeDipoleForce->addParticle(2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4,
-                                  3.9000000e-1, 0, 0, 2, -1);
+                                  0, 0, 2, -1);
     tholeDipoleForce->addParticle(2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4,
-                                  3.9000000e-1, 0, 0, 1, -1);
+                                  0, 0, 1, -1);
 
     // Set up covalent maps for 1-2 bonded interactions
     std::vector<int> covalentMap;

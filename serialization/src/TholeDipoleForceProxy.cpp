@@ -42,19 +42,21 @@ TholeDipoleForceProxy::TholeDipoleForceProxy() : SerializationProxy("TholeDipole
 }
 
 void TholeDipoleForceProxy::serialize(const void* object, SerializationNode& node) const {
-    node.setIntProperty("version", 1);
+    node.setIntProperty("version", 2);
     const TholeDipoleForce& force = *reinterpret_cast<const TholeDipoleForce*>(object);
-    
+
     // Serialize force parameters
     node.setIntProperty("forceGroup", force.getForceGroup());
     node.setIntProperty("nonbondedMethod", force.getNonbondedMethod());
     node.setIntProperty("polarizationType", force.getPolarizationType());
+    node.setIntProperty("tholeDampingType", force.getTholeDampingType());
+    node.setDoubleProperty("tholeDampingParameter", force.getTholeDampingParameter());
     node.setDoubleProperty("cutoffDistance", force.getCutoffDistance());
     node.setDoubleProperty("ewaldErrorTolerance", force.getEwaldErrorTolerance());
     node.setIntProperty("mutualInducedMaxIterations", force.getMutualInducedMaxIterations());
     node.setDoubleProperty("mutualInducedTargetEpsilon", force.getMutualInducedTargetEpsilon());
     node.setIntProperty("pmeBSplineOrder", force.getPmeBSplineOrder());
-    
+
     // Serialize PME parameters
     double alpha;
     int nx, ny, nz;
@@ -63,27 +65,26 @@ void TholeDipoleForceProxy::serialize(const void* object, SerializationNode& nod
     node.setIntProperty("nx", nx);
     node.setIntProperty("ny", ny);
     node.setIntProperty("nz", nz);
-    
+
     // Serialize extrapolation coefficients
     const std::vector<double>& extrapolationCoefficients = force.getExtrapolationCoefficients();
     SerializationNode& extrapCoeffs = node.createChildNode("ExtrapolationCoefficients");
     for (int i = 0; i < (int) extrapolationCoefficients.size(); i++) {
         extrapCoeffs.createChildNode("Coefficient").setDoubleProperty("c", extrapolationCoefficients[i]);
     }
-    
+
     // Serialize particles
     SerializationNode& particles = node.createChildNode("Particles");
     for (int i = 0; i < force.getNumParticles(); i++) {
-        double charge, polarizability, tholeDamping;
+        double charge, polarizability;
         std::vector<double> molecularDipole;
         int axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY;
-        force.getParticleParameters(i, charge, molecularDipole, polarizability, tholeDamping, 
+        force.getParticleParameters(i, charge, molecularDipole, polarizability,
                                     axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY);
-        
+
         SerializationNode& particle = particles.createChildNode("Particle");
         particle.setDoubleProperty("charge", charge);
         particle.setDoubleProperty("polarizability", polarizability);
-        particle.setDoubleProperty("tholeDamping", tholeDamping);
         particle.setIntProperty("axisType", axisType);
         particle.setIntProperty("multipoleAtomZ", multipoleAtomZ);
         particle.setIntProperty("multipoleAtomX", multipoleAtomX);
@@ -112,7 +113,8 @@ void TholeDipoleForceProxy::serialize(const void* object, SerializationNode& nod
 }
 
 void* TholeDipoleForceProxy::deserialize(const SerializationNode& node) const {
-    if (node.getIntProperty("version") != 1)
+    int version = node.getIntProperty("version");
+    if (version < 1 || version > 2)
         throw OpenMMException("Unsupported version number");
     TholeDipoleForce* force = new TholeDipoleForce();
     try {
@@ -120,15 +122,22 @@ void* TholeDipoleForceProxy::deserialize(const SerializationNode& node) const {
         force->setForceGroup(node.getIntProperty("forceGroup"));
         force->setNonbondedMethod(static_cast<TholeDipoleForce::NonbondedMethod>(node.getIntProperty("nonbondedMethod")));
         force->setPolarizationType(static_cast<TholeDipoleForce::PolarizationType>(node.getIntProperty("polarizationType")));
+
+        // Version 2 adds global Thole damping parameters
+        if (version >= 2) {
+            force->setTholeDampingType(static_cast<TholeDipoleForce::TholeDampingType>(node.getIntProperty("tholeDampingType")));
+            force->setTholeDampingParameter(node.getDoubleProperty("tholeDampingParameter"));
+        }
+
         force->setCutoffDistance(node.getDoubleProperty("cutoffDistance"));
         force->setEwaldErrorTolerance(node.getDoubleProperty("ewaldErrorTolerance"));
         force->setMutualInducedMaxIterations(node.getIntProperty("mutualInducedMaxIterations"));
         force->setMutualInducedTargetEpsilon(node.getDoubleProperty("mutualInducedTargetEpsilon"));
-        
+
         // Deserialize PME parameters
-        force->setPMEParameters(node.getDoubleProperty("alpha"), node.getIntProperty("nx"), 
+        force->setPMEParameters(node.getDoubleProperty("alpha"), node.getIntProperty("nx"),
                                node.getIntProperty("ny"), node.getIntProperty("nz"));
-        
+
         // Deserialize extrapolation coefficients
         const SerializationNode& extrapCoeffs = node.getChildNode("ExtrapolationCoefficients");
         std::vector<double> extrapolationCoefficients;
@@ -137,28 +146,27 @@ void* TholeDipoleForceProxy::deserialize(const SerializationNode& node) const {
             extrapolationCoefficients.push_back(coeff.getDoubleProperty("c"));
         }
         force->setExtrapolationCoefficients(extrapolationCoefficients);
-        
+
         // Deserialize particles
         const SerializationNode& particles = node.getChildNode("Particles");
         for (int i = 0; i < (int) particles.getChildren().size(); i++) {
             const SerializationNode& particle = particles.getChildren()[i];
-            
+
             double charge = particle.getDoubleProperty("charge");
             double polarizability = particle.getDoubleProperty("polarizability");
-            double tholeDamping = particle.getDoubleProperty("tholeDamping");
             int axisType = particle.getIntProperty("axisType");
             int multipoleAtomZ = particle.getIntProperty("multipoleAtomZ");
             int multipoleAtomX = particle.getIntProperty("multipoleAtomX");
             int multipoleAtomY = particle.getIntProperty("multipoleAtomY");
-            
+
             // Deserialize dipole components
             const SerializationNode& dipole = particle.getChildNode("Dipole");
             std::vector<double> molecularDipole(3);
             molecularDipole[0] = dipole.getDoubleProperty("x");
             molecularDipole[1] = dipole.getDoubleProperty("y");
             molecularDipole[2] = dipole.getDoubleProperty("z");
-            
-            int particleIndex = force->addParticle(charge, molecularDipole, polarizability, tholeDamping, 
+
+            int particleIndex = force->addParticle(charge, molecularDipole, polarizability,
                                                   axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY);
             
             // Deserialize covalent maps

@@ -49,16 +49,15 @@ void testZeroDipoles() {
     
     // System with charges and polarization but zero dipoles
     vector<double> zeroDipole(3, 0.0);  // Zero dipole moments
-    
+
     double charge1 = 0.5;
     double charge2 = -0.5;
-    double thole = 0.39;
     double polarizability = 0.001;
-    
+
     // Both particles have charges and polarization but zero dipoles
-    force->addParticle(charge1, zeroDipole, polarizability, thole, 
+    force->addParticle(charge1, zeroDipole, polarizability,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
-    force->addParticle(charge2, zeroDipole, polarizability, thole,
+    force->addParticle(charge2, zeroDipole, polarizability,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
     
     vector<Vec3> positions(2);

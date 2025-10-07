@@ -16,16 +16,15 @@ void testZOnly() {
     d1[2] = 0.1;
     vector<double> d2(3, 0.0);
     d2[2] = -0.05;
-    
+
     double charge1 = 0.5;
     double charge2 = -0.5;
-    double thole = 0.39;
     double pol = 0.001;
-    
-    force->addParticle(charge1, d1, pol, thole, 
+
+    force->addParticle(charge1, d1, pol,
                       TholeDipoleForce::ZOnly, 1, -1, -1);
-     
-    force->addParticle(charge2, d2, pol, thole,
+
+    force->addParticle(charge2, d2, pol,
                       TholeDipoleForce::ZOnly, 0, -1, -1);
     
     vector<Vec3> positions(2);

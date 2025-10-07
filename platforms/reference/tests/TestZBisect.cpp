@@ -63,13 +63,12 @@ void testZBisect() {
         {0, 4, 6, -1},
         {0, 4, 5, -1}
     };
-    double thole = 0.39;
     double polarity[] = {0.001334, 0.001334, 0.001334, 0.001334, 0.000837, 0.000496, 0.000496};
     for (int i = 0; i < 7; i++) {
         vector<double> d;
         for (int j = 0; j < 3; j++)
             d.push_back(dipole[i][j]);
-        force->addParticle(charge[i], d, polarity[i], thole, axis[i][0], axis[i][1], axis[i][2], axis[i][3]);
+        force->addParticle(charge[i], d, polarity[i], axis[i][0], axis[i][1], axis[i][2], axis[i][3]);
     }
     for (int i = 0; i < 4; i++) {
         vector<int> map;

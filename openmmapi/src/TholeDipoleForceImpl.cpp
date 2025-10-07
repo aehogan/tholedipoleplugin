@@ -67,10 +67,10 @@ void TholeDipoleForceImpl::initialize(ContextImpl& context) {
     // Validate particle parameters
     for (int ii = 0; ii < numParticles; ii++) {
         int axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY;
-        double charge, polarizability, tholeDamping;
+        double charge, polarizability;
         std::vector<double> molecularDipole;
 
-        owner.getParticleParameters(ii, charge, molecularDipole, polarizability, tholeDamping, 
+        owner.getParticleParameters(ii, charge, molecularDipole, polarizability,
                                    axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY);
 
         // Only 'Z-then-X', 'Bisector', Z-Bisect, ThreeFold, ZOnly currently handled

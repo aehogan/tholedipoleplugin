@@ -52,15 +52,14 @@ void testZeroCharges() {
     d1[0] = 0.1;  // Dipole along x
     vector<double> d2(3, 0.0);
     d2[1] = 0.1;  // Dipole along y
-    
+
     double zeroCharge = 0.0;  // Zero charges
-    double thole = 0.39;
     double polarizability = 0.001;
-    
+
     // Both particles have zero charge but have dipoles and polarization
-    force->addParticle(zeroCharge, d1, polarizability, thole, 
+    force->addParticle(zeroCharge, d1, polarizability,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
-    force->addParticle(zeroCharge, d2, polarizability, thole,
+    force->addParticle(zeroCharge, d2, polarizability,
                       TholeDipoleForce::NoAxisType, -1, -1, -1);
     
     vector<Vec3> positions(2);

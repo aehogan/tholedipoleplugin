@@ -96,12 +96,12 @@ static void testTholeDipoleAmmoniaMutualPolarization() {
 
     // Try changing the particle parameters and make sure it's still correct.
     for (int i = 0; i < numberOfParticles; i++) {
-        double charge, polarizability, tholeDamping;
+        double charge, polarizability;
         int axisType, atomX, atomY, atomZ;
         std::vector<double> dipole;
-        tholeDipoleForce->getParticleParameters(i, charge, dipole, polarizability, tholeDamping, axisType, atomZ, atomX, atomY);
+        tholeDipoleForce->getParticleParameters(i, charge, dipole, polarizability, axisType, atomZ, atomX, atomY);
         dipole[0] *= 0.7;
-        tholeDipoleForce->setParticleParameters(i, 1.1*charge, dipole, 1.5*polarizability, 1.3*tholeDamping, axisType, atomZ, atomX, atomY);
+        tholeDipoleForce->setParticleParameters(i, 1.1*charge, dipole, 1.5*polarizability, axisType, atomZ, atomX, atomY);
     }
     LangevinIntegrator integrator2(0.0, 0.1, 0.01);
     Context context2(tholeDipoleSystem, integrator2, context.getPlatform());

@@ -22,38 +22,38 @@ void setupTholeDipoleAmmonia(System& system, TholeDipoleForce* tholeDipoleForce,
     tholeDipoleForce->setEwaldErrorTolerance(1.0e-4);
 
     std::vector<double> nitrogenMolecularDipole(3);
-    nitrogenMolecularDipole[0]     =   8.3832254e-3;
+    nitrogenMolecularDipole[0]     =   0.0;
     nitrogenMolecularDipole[1]     =   0.0;
-    nitrogenMolecularDipole[2]     =   3.4232474e-3;
+    nitrogenMolecularDipole[2]     =   3.4e-3;
 
     // first N
     system.addParticle(1.4007000e+01);
-    tholeDipoleForce->addParticle(-5.7960000e-1, nitrogenMolecularDipole, 1.0730000e-3, 3.9000000e-1, 2, 1, 2, 3);
+    tholeDipoleForce->addParticle(-5.7960000e-1, nitrogenMolecularDipole, 1.0730000e-3, TholeDipoleForce::ThreeFold, 1, 2, 3);
 
     // 3 H attached to first N
     std::vector<double> hydrogenMolecularDipole(3);
-    hydrogenMolecularDipole[0]     =  -1.7388763e-3;
+    hydrogenMolecularDipole[0]     =   0.0;
     hydrogenMolecularDipole[1]     =   0.0;
-    hydrogenMolecularDipole[2]     =  -4.6837475e-3;
+    hydrogenMolecularDipole[2]     =  -4.7e-3;
 
     system.addParticle(1.0080000e+00);
     system.addParticle(1.0080000e+00);
     system.addParticle(1.0080000e+00);
-    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, 3.9e-1, 2, 0, 2, 3);
-    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, 3.9e-1, 2, 0, 1, 3);
-    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, 3.9e-1, 2, 0, 1, 2);
+    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, TholeDipoleForce::ZOnly, 0, -1, -1);
+    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, TholeDipoleForce::ZOnly, 0, -1, -1);
+    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, TholeDipoleForce::ZOnly, 0, -1, -1);
 
     // second N
     system.addParticle(1.4007000e+01);
-    tholeDipoleForce->addParticle(-5.796e-1, nitrogenMolecularDipole, 1.073e-3, 3.9e-1, 2, 5, 6, 7);
+    tholeDipoleForce->addParticle(-5.796e-1, nitrogenMolecularDipole, 1.073e-3, TholeDipoleForce::ThreeFold, 5, 6, 7);
 
     // 3 H attached to second N
     system.addParticle(1.0080000e+00);
     system.addParticle(1.0080000e+00);
     system.addParticle(1.0080000e+00);
-    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, 3.9e-1, 2, 4, 6, 7);
-    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, 3.9e-1, 2, 4, 5, 7);
-    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, 3.9e-1, 2, 4, 5, 6);
+    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, TholeDipoleForce::ZOnly, 4, -1, -1);
+    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, TholeDipoleForce::ZOnly, 4, -1, -1);
+    tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 4.96e-4, TholeDipoleForce::ZOnly, 4, -1, -1);
 
     // covalent maps
     std::vector< int > covalentMap;
@@ -61,67 +61,67 @@ void setupTholeDipoleAmmonia(System& system, TholeDipoleForce* tholeDipoleForce,
     covalentMap.push_back(1);
     covalentMap.push_back(2);
     covalentMap.push_back(3);
-    tholeDipoleForce->setCovalentMap(0, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+    tholeDipoleForce->setCovalentMap(0, TholeDipoleForce::Covalent12, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(0);
-    tholeDipoleForce->setCovalentMap(1, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+    tholeDipoleForce->setCovalentMap(1, TholeDipoleForce::Covalent12, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(2);
     covalentMap.push_back(3);
-    tholeDipoleForce->setCovalentMap(1, static_cast<TholeDipoleForce::CovalentType>(1), covalentMap);
+    tholeDipoleForce->setCovalentMap(1, TholeDipoleForce::Covalent13, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(0);
-    tholeDipoleForce->setCovalentMap(2, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+    tholeDipoleForce->setCovalentMap(2, TholeDipoleForce::Covalent12, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(1);
     covalentMap.push_back(3);
-    tholeDipoleForce->setCovalentMap(2, static_cast<TholeDipoleForce::CovalentType>(1), covalentMap);
+    tholeDipoleForce->setCovalentMap(2, TholeDipoleForce::Covalent13, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(0);
-    tholeDipoleForce->setCovalentMap(3, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+    tholeDipoleForce->setCovalentMap(3, TholeDipoleForce::Covalent12, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(1);
     covalentMap.push_back(2);
-    tholeDipoleForce->setCovalentMap(3, static_cast<TholeDipoleForce::CovalentType>(1), covalentMap);
+    tholeDipoleForce->setCovalentMap(3, TholeDipoleForce::Covalent13, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(5);
     covalentMap.push_back(6);
     covalentMap.push_back(7);
-    tholeDipoleForce->setCovalentMap(4, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+    tholeDipoleForce->setCovalentMap(4, TholeDipoleForce::Covalent12, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(4);
-    tholeDipoleForce->setCovalentMap(5, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+    tholeDipoleForce->setCovalentMap(5, TholeDipoleForce::Covalent12, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(6);
     covalentMap.push_back(7);
-    tholeDipoleForce->setCovalentMap(5, static_cast<TholeDipoleForce::CovalentType>(1), covalentMap);
+    tholeDipoleForce->setCovalentMap(5, TholeDipoleForce::Covalent13, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(4);
-    tholeDipoleForce->setCovalentMap(6, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+    tholeDipoleForce->setCovalentMap(6, TholeDipoleForce::Covalent12, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(5);
     covalentMap.push_back(7);
-    tholeDipoleForce->setCovalentMap(6, static_cast<TholeDipoleForce::CovalentType>(1), covalentMap);
+    tholeDipoleForce->setCovalentMap(6, TholeDipoleForce::Covalent13, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(4);
-    tholeDipoleForce->setCovalentMap(7, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+    tholeDipoleForce->setCovalentMap(7, TholeDipoleForce::Covalent12, covalentMap);
 
     covalentMap.resize(0);
     covalentMap.push_back(5);
     covalentMap.push_back(6);
-    tholeDipoleForce->setCovalentMap(7, static_cast<TholeDipoleForce::CovalentType>(1), covalentMap);
+    tholeDipoleForce->setCovalentMap(7, TholeDipoleForce::Covalent13, covalentMap);
 
     system.addForce(tholeDipoleForce);
 }
@@ -195,9 +195,9 @@ void setupAndGetForcesEnergyTholeDipoleWater(TholeDipoleForce::NonbondedMethod n
     hydrogenMolecularDipole[2]     =  -3.0787530e-3;
 
     for (unsigned int jj = 0; jj < numberOfParticles; jj += 3) {
-        tholeDipoleForce->addParticle(-5.1966000e-1, oxygenMolecularDipole, 8.3700000e-4, 3.9000000e-1, 1, jj+1, jj+2, -1);
-        tholeDipoleForce->addParticle( 2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4, 3.9000000e-1, 0, jj, jj+2, -1);
-        tholeDipoleForce->addParticle( 2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4, 3.9000000e-1, 0, jj, jj+1, -1);
+        tholeDipoleForce->addParticle(-5.1966000e-1, oxygenMolecularDipole, 8.3700000e-4, TholeDipoleForce::Bisector, jj+1, jj+2, -1);
+        tholeDipoleForce->addParticle( 2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4, TholeDipoleForce::ZThenX, jj, jj+2, -1);
+        tholeDipoleForce->addParticle( 2.5983000e-1, hydrogenMolecularDipole, 4.9600000e-4, TholeDipoleForce::ZThenX, jj, jj+1, -1);
     }
 
     // CovalentMaps
@@ -206,20 +206,20 @@ void setupAndGetForcesEnergyTholeDipoleWater(TholeDipoleForce::NonbondedMethod n
         covalentMap.resize(0);
         covalentMap.push_back(jj+1);
         covalentMap.push_back(jj+2);
-        tholeDipoleForce->setCovalentMap(jj, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+        tholeDipoleForce->setCovalentMap(jj, TholeDipoleForce::Covalent12, covalentMap);
     
         covalentMap.resize(0);
         covalentMap.push_back(jj);
-        tholeDipoleForce->setCovalentMap(jj+1, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
-        tholeDipoleForce->setCovalentMap(jj+2, static_cast<TholeDipoleForce::CovalentType>(0), covalentMap);
+        tholeDipoleForce->setCovalentMap(jj+1, TholeDipoleForce::Covalent12, covalentMap);
+        tholeDipoleForce->setCovalentMap(jj+2, TholeDipoleForce::Covalent12, covalentMap);
     
         covalentMap.resize(0);
         covalentMap.push_back(jj+2);
-        tholeDipoleForce->setCovalentMap(jj+1, static_cast<TholeDipoleForce::CovalentType>(1), covalentMap);
+        tholeDipoleForce->setCovalentMap(jj+1, TholeDipoleForce::Covalent13, covalentMap);
     
         covalentMap.resize(0);
         covalentMap.push_back(jj+1);
-        tholeDipoleForce->setCovalentMap(jj+2, static_cast<TholeDipoleForce::CovalentType>(1), covalentMap);
+        tholeDipoleForce->setCovalentMap(jj+2, TholeDipoleForce::Covalent13, covalentMap);
     
     } 
  
@@ -304,14 +304,15 @@ AmoebaMultipoleForce* createEquivalentAmoebaForce(TholeDipoleForce* tholeDipoleF
     
     // Convert particles
     int numParticles = tholeDipoleForce->getNumParticles();
+    double thole = tholeDipoleForce->getTholeDampingParameter();
     for (int i = 0; i < numParticles; i++) {
         double charge;
         vector<double> dipole;
-        double polarizability, thole;
+        double polarizability;
         int axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY;
-        
-        tholeDipoleForce->getParticleParameters(i, charge, dipole, polarizability, 
-                                                thole, axisType, 
+
+        tholeDipoleForce->getParticleParameters(i, charge, dipole, polarizability,
+                                                axisType,
                                                 multipoleAtomZ, multipoleAtomX, multipoleAtomY);
         
         // Create zero quadrupole (9 components: XX, XY, XZ, YX, YY, YZ, ZX, ZY, ZZ)
