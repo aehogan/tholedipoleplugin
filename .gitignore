@@ -2,3 +2,6 @@ CLAUDE.md
 GEMINI.md
 build
 amoeba_reference
+__pycache__
+mpmc
+python_test_script
