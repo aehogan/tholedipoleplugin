@@ -154,7 +154,7 @@ void testTwoPointChargesLinear() {
     system.addForce(force);
     force->setNonbondedMethod(TholeDipoleForce::NoCutoff);
     force->setPolarizationType(TholeDipoleForce::Mutual);
-    force->setMutualInducedTargetEpsilon(1.0e-6);
+    force->setMutualInducedTargetEpsilon(1.0e-8);
     force->setMutualInducedMaxIterations(500);
 
     // Linear damping
