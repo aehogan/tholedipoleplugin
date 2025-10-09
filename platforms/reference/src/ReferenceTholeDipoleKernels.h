@@ -35,6 +35,7 @@
 #include "TholeDipoleKernels.h"
 #include "TholeDipoleForce.h"
 #include "ReferenceTholeDipoleForce.h"
+#include "ReferencePMETholeDipoleForce.h"
 #include "openmm/Platform.h"
 #include "openmm/Vec3.h"
 #include <vector>

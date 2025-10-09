@@ -139,12 +139,15 @@ double ReferenceTholeDipoleForce::calculateForceAndEnergy(const vector<Vec3>& pa
 
     // Add self-energy terms for polarization
     const double scale_factor = _electric / _dielectric;
+    double polSelfEnergy = 0.0;
     for (unsigned int i = 0; i < _numParticles; i++) {
         if (particleData[i].polarizability > 0.0) {
             double mu2 = _inducedDipole[i].dot(_inducedDipole[i]);
-            energy += 0.5 * scale_factor * mu2 / particleData[i].polarizability;
+            polSelfEnergy += 0.5 * scale_factor * mu2 / particleData[i].polarizability;
         }
     }
+    std::cout << "Polarization self-energy: " << polSelfEnergy << " kJ/mol" << std::endl;
+    energy += polSelfEnergy;
 
     // Map torques to forces
     mapTorqueToForce(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs, 
@@ -630,7 +633,13 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     const TholeDipoleParticleData& particleI,
     const TholeDipoleParticleData& particleJ,
     double mScale, double iScale) {
-    
+
+    static bool printed = false;
+    if (!printed && particleI.particleIndex == 0 && particleJ.particleIndex == 1) {
+        std::cout << "Base calculateFixedDipoleFieldPairIxn called" << std::endl;
+        printed = true;
+    }
+
     if (particleI.particleIndex == particleJ.particleIndex) {
         return;
     }

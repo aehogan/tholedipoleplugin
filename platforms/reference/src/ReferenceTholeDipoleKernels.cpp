@@ -164,17 +164,17 @@ TholeDipolePlugin::ReferenceTholeDipoleForce* ReferenceCalcTholeDipoleForceKerne
     TholeDipolePlugin::ReferenceTholeDipoleForce* referenceTholeDipoleForce = NULL;
     
     if (usePme) {
-        ReferencePmeTholeDipoleForce* referencePmeTholeDipoleForce = new ReferencePmeTholeDipoleForce();
-        referencePmeTholeDipoleForce->setAlphaEwald(alphaEwald);
-        referencePmeTholeDipoleForce->setCutoffDistance(cutoffDistance);
-        referencePmeTholeDipoleForce->setPmeGridDimensions(pmeGridDimension);
+        ReferencePMETholeDipoleForce* referencePMETholeDipoleForce = new ReferencePMETholeDipoleForce();
+        referencePMETholeDipoleForce->setAlphaEwald(alphaEwald);
+        referencePMETholeDipoleForce->setCutoffDistance(cutoffDistance);
+        referencePMETholeDipoleForce->setPmeGridDimensions(pmeGridDimension);
         Vec3* boxVectors = extractBoxVectors(context);
         double minAllowedSize = 1.999999*cutoffDistance;
         if (boxVectors[0][0] < minAllowedSize || boxVectors[1][1] < minAllowedSize || boxVectors[2][2] < minAllowedSize) {
             throw OpenMMException("The periodic box size has decreased to less than twice the nonbonded cutoff.");
         }
-        referencePmeTholeDipoleForce->setPeriodicBoxSize(boxVectors);
-        referenceTholeDipoleForce = static_cast<ReferenceTholeDipoleForce*>(referencePmeTholeDipoleForce);
+        referencePMETholeDipoleForce->setPeriodicBoxSize(boxVectors);
+        referenceTholeDipoleForce = static_cast<ReferenceTholeDipoleForce*>(referencePMETholeDipoleForce);
     }
     else {
         referenceTholeDipoleForce = new ReferenceTholeDipoleForce(ReferenceTholeDipoleForce::NoCutoff);
