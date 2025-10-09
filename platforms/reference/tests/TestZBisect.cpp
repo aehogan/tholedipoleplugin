@@ -101,17 +101,26 @@ void testZBisect() {
     positions.push_back(Vec3(0.07781149999999992, 0.4178183000000004, 0.6355703000000004));
     context.setPositions(positions);
     State state = context.getState(State::Energy | State::Forces);
-    
-    // Basic sanity checks
+
     double energy = state.getPotentialEnergy();
     const vector<Vec3>& forces = state.getForces();
-    
-    ASSERT(std::isfinite(energy));
+
+    // Forces should be non-zero (particles are interacting)
+    double totalForceMag = 0.0;
     for (int i = 0; i < 7; i++) {
-        ASSERT(std::isfinite(forces[i][0]));
-        ASSERT(std::isfinite(forces[i][1])); 
-        ASSERT(std::isfinite(forces[i][2]));
+        double forceMag = sqrt(forces[i][0]*forces[i][0] + forces[i][1]*forces[i][1] + forces[i][2]*forces[i][2]);
+        totalForceMag += forceMag;
     }
+    ASSERT(totalForceMag > 1e-6);
+
+    // Forces should sum to zero (momentum conservation)
+    Vec3 forceSum(0, 0, 0);
+    for (int i = 0; i < 7; i++) {
+        forceSum += forces[i];
+    }
+    ASSERT(fabs(forceSum[0]) < 1e-6);
+    ASSERT(fabs(forceSum[1]) < 1e-6);
+    ASSERT(fabs(forceSum[2]) < 1e-6);
     
     // Compare with AMOEBA
     try {

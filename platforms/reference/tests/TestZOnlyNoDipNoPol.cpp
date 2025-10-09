@@ -34,24 +34,30 @@ void testZOnlyNoDipNoPol() {
     
     State state = context.getState(State::Forces | State::Energy);
     
-    // Should behave like simple charge-charge interaction since no dipoles/polarization
     double energy = state.getPotentialEnergy();
     const vector<Vec3>& forces = state.getForces();
-    
-    // Basic sanity checks
-    ASSERT(std::isfinite(energy));
-    ASSERT(std::isfinite(forces[0][0]));
-    ASSERT(std::isfinite(forces[0][1]));
-    ASSERT(std::isfinite(forces[0][2]));
-    ASSERT(std::isfinite(forces[1][0]));
-    ASSERT(std::isfinite(forces[1][1]));
-    ASSERT(std::isfinite(forces[1][2]));
-    
-    // For charges along z-axis, forces should be purely along z
+
+    // Pure Coulomb: E = k*q1*q2/r = 138.935*0.5*(-0.5)/0.3 = -115.78 kJ/mol
+    double expectedEnergy = -115.78;
+    ASSERT_EQUAL_TOL(energy, expectedEnergy, 1.0);
+
+    // Forces should be non-zero
+    for (int i = 0; i < 2; i++) {
+        double forceMag = sqrt(forces[i][0]*forces[i][0] + forces[i][1]*forces[i][1] + forces[i][2]*forces[i][2]);
+        ASSERT(forceMag > 1e-6);
+    }
+
+    // Cylindrical symmetry: forces along z-axis should have no x,y components
     ASSERT(fabs(forces[0][0]) < 1e-10);
     ASSERT(fabs(forces[0][1]) < 1e-10);
     ASSERT(fabs(forces[1][0]) < 1e-10);
     ASSERT(fabs(forces[1][1]) < 1e-10);
+
+    // Forces should sum to zero (momentum conservation)
+    Vec3 forceSum = forces[0] + forces[1];
+    ASSERT(fabs(forceSum[0]) < 1e-6);
+    ASSERT(fabs(forceSum[1]) < 1e-6);
+    ASSERT(fabs(forceSum[2]) < 1e-6);
     
     // Forces should be equal and opposite
     ASSERT_EQUAL_TOL(forces[0][2], -forces[1][2], 1e-10);

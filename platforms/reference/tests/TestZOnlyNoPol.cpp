@@ -39,20 +39,27 @@ void testZOnlyNoPol() {
     
     double energy = state.getPotentialEnergy();
     const vector<Vec3>& forces = state.getForces();
-    
-    // Basic sanity checks
-    ASSERT(std::isfinite(energy));
+
+    // Energy should be negative (opposite charges with aligned dipoles)
+    ASSERT(energy < 0.0);
+
+    // Forces should be non-zero
     for (int i = 0; i < 2; i++) {
-        ASSERT(std::isfinite(forces[i][0]));
-        ASSERT(std::isfinite(forces[i][1]));
-        ASSERT(std::isfinite(forces[i][2]));
+        double forceMag = sqrt(forces[i][0]*forces[i][0] + forces[i][1]*forces[i][1] + forces[i][2]*forces[i][2]);
+        ASSERT(forceMag > 1e-6);
     }
-    
-    // For charges and dipoles along z-axis, forces should be purely along z
+
+    // Cylindrical symmetry: forces along z-axis should have no x,y components
     ASSERT(fabs(forces[0][0]) < 1e-10);
     ASSERT(fabs(forces[0][1]) < 1e-10);
     ASSERT(fabs(forces[1][0]) < 1e-10);
     ASSERT(fabs(forces[1][1]) < 1e-10);
+
+    // Forces should sum to zero (momentum conservation)
+    Vec3 forceSum = forces[0] + forces[1];
+    ASSERT(fabs(forceSum[0]) < 1e-6);
+    ASSERT(fabs(forceSum[1]) < 1e-6);
+    ASSERT(fabs(forceSum[2]) < 1e-6);
     
     // Compare with AMOEBA
     try {

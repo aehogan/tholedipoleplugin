@@ -136,9 +136,13 @@ void testTwoPointChargesNoPol() {
     cout << "  MPMC:   " << mpmc_energy << " kJ/mol" << endl;
     cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
 
-    ASSERT(std::isfinite(energy));
+    // Energy should be negative (opposite charges attract)
     ASSERT(energy < 0.0);
-    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
+
+    // Energy should match MPMC ground truth
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
+
+    // Newton's 3rd law: forces equal and opposite
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
 
     // Check forces vs finite differences
@@ -190,9 +194,13 @@ void testTwoPointChargesLinear() {
     cout << "  MPMC:   " << mpmc_energy << " kJ/mol" << endl;
     cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
 
-    ASSERT(std::isfinite(energy));
+    // Energy should be negative (opposite charges attract)
     ASSERT(energy < 0.0);
-    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
+
+    // Energy should match MPMC ground truth
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
+
+    // Newton's 3rd law: forces equal and opposite
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
 
     // Check forces vs finite differences
@@ -252,9 +260,13 @@ void testTwoPointChargesExponential() {
     cout << "  MPMC:   " << mpmc_energy << " kJ/mol" << endl;
     cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
 
-    ASSERT(std::isfinite(energy));
+    // Energy should be negative (opposite charges attract)
     ASSERT(energy < 0.0);
-    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
+
+    // Energy should match MPMC ground truth
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
+
+    // Newton's 3rd law: forces equal and opposite
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
 
     // Check forces vs finite differences
@@ -306,9 +318,13 @@ void testTwoPointChargesAmoeba() {
     cout << "  MPMC:   " << mpmc_energy << " kJ/mol" << endl;
     cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
 
-    ASSERT(std::isfinite(energy));
+    // Energy should be negative (opposite charges attract)
     ASSERT(energy < 0.0);
-    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);  // Within 0.01 kJ/mol
+
+    // Energy should match MPMC ground truth
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
+
+    // Newton's 3rd law: forces equal and opposite
     ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
 
     // Check forces vs finite differences

@@ -64,17 +64,10 @@ void testSingleParticle() {
     
     State state = context.getState(State::Forces | State::Energy);
     
-    // Single particle should have no interactions - energy and forces should be zero
     double energy = state.getPotentialEnergy();
     const vector<Vec3>& forces = state.getForces();
-    
-    // Basic sanity checks
-    ASSERT(std::isfinite(energy));
-    ASSERT(std::isfinite(forces[0][0]));
-    ASSERT(std::isfinite(forces[0][1]));
-    ASSERT(std::isfinite(forces[0][2]));
-    
-    // Single particle should have zero energy and forces
+
+    // Single particle has no interactions - energy and forces must be exactly zero
     ASSERT_EQUAL_TOL(energy, 0.0, 1e-10);
     ASSERT_EQUAL_TOL(forces[0][0], 0.0, 1e-10);
     ASSERT_EQUAL_TOL(forces[0][1], 0.0, 1e-10);

@@ -161,12 +161,21 @@ void testSingleWater() {
     cout << "    H1: " << forces[1] << " kJ/mol/nm" << endl;
     cout << "    H2: " << forces[2] << " kJ/mol/nm" << endl;
 
-    // Basic sanity check
-    ASSERT(std::isfinite(energy));
+    // Single isolated water with all intramolecular interactions scaled (1-2, 1-3)
+    // should have zero energy and zero forces
+    ASSERT_EQUAL_TOL(energy, 0.0, 1e-10);
+
+    // Forces should sum to zero (momentum conservation)
+    Vec3 forceSum = forces[0] + forces[1] + forces[2];
+    ASSERT(fabs(forceSum[0]) < 1e-6);
+    ASSERT(fabs(forceSum[1]) < 1e-6);
+    ASSERT(fabs(forceSum[2]) < 1e-6);
+
+    // Each force should be zero (no unscaled interactions)
     for (int i = 0; i < 3; i++) {
-        ASSERT(std::isfinite(forces[i][0]));
-        ASSERT(std::isfinite(forces[i][1]));
-        ASSERT(std::isfinite(forces[i][2]));
+        ASSERT_EQUAL_TOL(forces[i][0], 0.0, 1e-10);
+        ASSERT_EQUAL_TOL(forces[i][1], 0.0, 1e-10);
+        ASSERT_EQUAL_TOL(forces[i][2], 0.0, 1e-10);
     }
 
     // Compare with AMOEBA

@@ -37,20 +37,26 @@ void testZOnly() {
     
     State state = context.getState(State::Forces | State::Energy);
     
-    // Print forces and energy
     printf("ZOnly Test:\n");
     printf("Energy: %.8f\n", state.getPotentialEnergy());
     for (int i = 0; i < 2; i++) {
         Vec3 f = state.getForces()[i];
         printf("Force[%d]: (%.6e, %.6e, %.6e)\n", i, f[0], f[1], f[2]);
     }
-    
-    // For a dipole along Z interacting with a charge along Z,
-    // forces should be purely along Z (no x,y components)
-    ASSERT(fabs(state.getForces()[0][0]) < 1e-10);
-    ASSERT(fabs(state.getForces()[0][1]) < 1e-10);
-    ASSERT(fabs(state.getForces()[1][0]) < 1e-10);
-    ASSERT(fabs(state.getForces()[1][1]) < 1e-10);
+
+    const vector<Vec3>& forces = state.getForces();
+
+    // Cylindrical symmetry: forces along z-axis should have no x,y components
+    ASSERT(fabs(forces[0][0]) < 1e-10);
+    ASSERT(fabs(forces[0][1]) < 1e-10);
+    ASSERT(fabs(forces[1][0]) < 1e-10);
+    ASSERT(fabs(forces[1][1]) < 1e-10);
+
+    // Forces should sum to zero (momentum conservation)
+    Vec3 forceSum = forces[0] + forces[1];
+    ASSERT(fabs(forceSum[0]) < 1e-6);
+    ASSERT(fabs(forceSum[1]) < 1e-6);
+    ASSERT(fabs(forceSum[2]) < 1e-6);
     
     // Compare with AMOEBA
     try {

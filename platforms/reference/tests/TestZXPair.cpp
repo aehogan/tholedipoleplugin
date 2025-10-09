@@ -92,19 +92,25 @@ void testZXPair() {
     context.setPositions(positions);
     State state = context.getState(State::Energy | State::Forces);
     
-    // Basic sanity check - energy should be finite
     double energy = state.getPotentialEnergy();
     const vector<Vec3>& forces = state.getForces();
-    
-    ASSERT(std::isfinite(energy));
+
+    // Energy should be negative (net attraction: +0.5 charge with two -0.25 charges)
+    ASSERT(energy < 0.0);
+
+    // Forces should be non-zero (particles are interacting)
+    double totalForceMag = 0.0;
     for (int i = 0; i < 3; i++) {
-        ASSERT(std::isfinite(forces[i][0]));
-        ASSERT(std::isfinite(forces[i][1])); 
-        ASSERT(std::isfinite(forces[i][2]));
+        double forceMag = sqrt(forces[i][0]*forces[i][0] + forces[i][1]*forces[i][1] + forces[i][2]*forces[i][2]);
+        totalForceMag += forceMag;
     }
-    
-    // Energy should be reasonable for a 3-particle system
-    ASSERT(fabs(energy) < 1e6);
+    ASSERT(totalForceMag > 1e-6);
+
+    // Forces should sum to zero (momentum conservation)
+    Vec3 forceSum = forces[0] + forces[1] + forces[2];
+    ASSERT(fabs(forceSum[0]) < 1e-6);
+    ASSERT(fabs(forceSum[1]) < 1e-6);
+    ASSERT(fabs(forceSum[2]) < 1e-6);
     
     // Use compareForces for full AMOEBA comparison including dipoles
     try {
