@@ -26,8 +26,13 @@ SET(INDIVIDUAL_TESTS
     AllZeros
     SingleParticle
     SingleWater
-    ZXPair
+    ZThenX
     TwoPointCharges
+    1DChainSizeConsistency
+    PMECutoffConvergence
+    Bisector
+    NoAxisType
+    ThreeFold
 )
 
 FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})
