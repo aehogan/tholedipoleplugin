@@ -146,7 +146,6 @@ double ReferenceTholeDipoleForce::calculateForceAndEnergy(const vector<Vec3>& pa
             polSelfEnergy += 0.5 * scale_factor * mu2 / particleData[i].polarizability;
         }
     }
-    std::cout << "Polarization self-energy: " << polSelfEnergy << " kJ/mol" << std::endl;
     energy += polSelfEnergy;
 
     // Map torques to forces
@@ -634,16 +633,10 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     const TholeDipoleParticleData& particleJ,
     double mScale, double iScale) {
 
-    static bool printed = false;
-    if (!printed && particleI.particleIndex == 0 && particleJ.particleIndex == 1) {
-        std::cout << "Base calculateFixedDipoleFieldPairIxn called" << std::endl;
-        printed = true;
-    }
-
     if (particleI.particleIndex == particleJ.particleIndex) {
         return;
     }
-    
+
     // Vector from source (J) to target (I)
     Vec3 rVec = particleI.position - particleJ.position;
     getPeriodicDelta(rVec);
@@ -681,13 +674,13 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
 
 void ReferenceTholeDipoleForce::calculateFixedDipoleField(
     const vector<TholeDipoleParticleData>& particleData) {
-    
+
     // Calculate fixed dipole fields from permanent charges and dipoles
     for (unsigned int i = 0; i < _numParticles; i++) {
         for (unsigned int j = i + 1; j < _numParticles; j++) {
             double mScale = 1.0;
             double iScale = 1.0;
-            
+
             // Get scaling factors if within cutoff
             if (j <= _maxScaleIndex[i]) {
                 mScale = getScaleFactor(i, j, M_SCALE);
@@ -700,29 +693,29 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleField(
 
 void ReferenceTholeDipoleForce::calculateInducedDipoles(
     const vector<TholeDipoleParticleData>& particleData) {
-    
+
     // Zero and calculate fixed dipole fields
     zeroFixedDipoleFields();
     calculateFixedDipoleField(particleData);
-    
+
     // Scale fields by polarizability and initialize induced dipoles
     _inducedDipole.resize(_numParticles);
     for (unsigned int i = 0; i < _numParticles; i++) {
         _inducedDipole[i] = _fixedDipoleField[i] * particleData[i].polarizability;
     }
-    
+
     // For Direct polarization, we're done
     if (_polarizationType == Direct) {
         _mutualInducedDipoleConverged = 1;
         _mutualInducedDipoleIterations = 0;
         return;
     }
-    
+
     // For Mutual polarization, iterate until convergence
     if (_polarizationType == Mutual) {
         convergeInducedDipolesByPCG(particleData);
     }
-    
+
     // For Extrapolated polarization, use perturbation theory
     if (_polarizationType == Extrapolated) {
         convergeInducedDipolesByExtrapolation(particleData);
@@ -743,11 +736,12 @@ void ReferenceTholeDipoleForce::calculateInducedDipolePairIxn(
     vector<Vec3>& field) const {
 
     if (_polarizationType == Direct) {
+        // E = [-μ/r³ + 3(μ·r̂)r̂/r³]
         double dDotDelta = rInv5 * (inducedDipole[particleJ].dot(deltaR));
-        field[particleI] += inducedDipole[particleJ] * rInv3 + deltaR * dDotDelta;
+        field[particleI] += -inducedDipole[particleJ] * rInv3 + deltaR * (3.0 * dDotDelta);
 
         dDotDelta = rInv5 * (inducedDipole[particleI].dot(deltaR));
-        field[particleJ] += inducedDipole[particleI] * rInv3 + deltaR * dDotDelta;
+        field[particleJ] += -inducedDipole[particleI] * rInv3 + deltaR * (3.0 * dDotDelta);
     }
     else {
         // Calculate damping factors based on damping type
@@ -801,10 +795,11 @@ void ReferenceTholeDipoleForce::calculateInducedDipolePairIxn(
         const Vec3& ui = inducedDipole[particleI];
 
         // Field on I due to J with correct damping
-        Vec3 fieldI = damp1 * uj * rInv3 + damp2 * deltaR * (uj.dot(deltaR)) * rInv5;
+        // E = [-μ/r³ + 3(μ·r̂)r̂/r³] with Thole damping
+        Vec3 fieldI = -damp1 * uj * rInv3 + 3.0 * damp2 * deltaR * (uj.dot(deltaR)) * rInv5;
 
         // Field on J due to I with correct damping
-        Vec3 fieldJ = damp1 * ui * rInv3 + damp2 * deltaR * (ui.dot(deltaR)) * rInv5;
+        Vec3 fieldJ = -damp1 * ui * rInv3 + 3.0 * damp2 * deltaR * (ui.dot(deltaR)) * rInv5;
 
         // Apply scaling
         field[particleI] += iScale * fieldI;
@@ -816,7 +811,7 @@ void ReferenceTholeDipoleForce::calculateInducedDipoleFields(
     const vector<TholeDipoleParticleData>& particleData,
     const vector<Vec3>& inducedDipoles,
     vector<Vec3>& inducedDipoleField) {
-    
+
     initializeVec3Vector(inducedDipoleField);
     
     for (unsigned int i = 0; i < _numParticles; i++) {
@@ -901,6 +896,7 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByPCG(
     }
 
     double epsilon = sqrt(r_dot_z / (3.0 * n)); // 3 components per particle
+
     if (epsilon <= tol) {
         _mutualInducedDipoleConverged = 1;
         _mutualInducedDipoleIterations = 0;
@@ -1503,53 +1499,3 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPotentialForParticleGrid
     return potential;
 }
 
-// PME class implementation
-ReferencePmeTholeDipoleForce::ReferencePmeTholeDipoleForce() : ReferenceTholeDipoleForce(ReferenceTholeDipoleForce::PME) {
-    _cutoffDistance = 1.0;
-    _alphaEwald = 0.0;
-    _pmeGridDimensions.resize(3, 0);
-}
-
-ReferencePmeTholeDipoleForce::~ReferencePmeTholeDipoleForce() {
-}
-
-void ReferencePmeTholeDipoleForce::setCutoffDistance(double cutoffDistance) {
-    _cutoffDistance = cutoffDistance;
-}
-
-double ReferencePmeTholeDipoleForce::getCutoffDistance() const {
-    return _cutoffDistance;
-}
-
-void ReferencePmeTholeDipoleForce::setAlphaEwald(double alphaEwald) {
-    _alphaEwald = alphaEwald;
-}
-
-double ReferencePmeTholeDipoleForce::getAlphaEwald() const {
-    return _alphaEwald;
-}
-
-void ReferencePmeTholeDipoleForce::setPmeGridDimensions(const std::vector<int>& pmeGridDimensions) {
-    _pmeGridDimensions = pmeGridDimensions;
-}
-
-void ReferencePmeTholeDipoleForce::getPmeGridDimensions(std::vector<int>& pmeGridDimensions) const {
-    pmeGridDimensions = _pmeGridDimensions;
-}
-
-void ReferencePmeTholeDipoleForce::setPeriodicBoxSize(Vec3* boxVectors) {
-    for (int i = 0; i < 3; i++) {
-        _periodicBoxVectors[i] = boxVectors[i];
-    }
-}
-
-void ReferencePmeTholeDipoleForce::getPeriodicDelta(Vec3& deltaR) const {
-    // Apply periodic boundary conditions
-    // This is a simplified implementation - full PBC would be more complex
-    for (int i = 0; i < 3; i++) {
-        double boxSize = _periodicBoxVectors[i][i];
-        if (boxSize > 0) {
-            deltaR[i] -= boxSize * floor(deltaR[i] / boxSize + 0.5);
-        }
-    }
-}

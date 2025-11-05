@@ -611,9 +611,9 @@ protected:
                                        const std::vector<Vec3>& inducedDipole,
                                        std::vector<Vec3>& field) const;
 
-    void calculateInducedDipoleFields(const std::vector<TholeDipoleParticleData>& particleData,
-                                      const std::vector<Vec3>& inducedDipoles,
-                                      std::vector<Vec3>& inducedDipoleField);
+    virtual void calculateInducedDipoleFields(const std::vector<TholeDipoleParticleData>& particleData,
+                                              const std::vector<Vec3>& inducedDipoles,
+                                              std::vector<Vec3>& inducedDipoleField);
 
     void mapTorqueToForce(const std::vector<TholeDipoleParticleData>& particleData,
                           const std::vector<int>& multipoleAtomXs,
