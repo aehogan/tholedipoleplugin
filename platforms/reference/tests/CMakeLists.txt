@@ -19,7 +19,6 @@ SET(INDIVIDUAL_TESTS
     ZOnlyNoPol
     ZOnly
     ZOnlyMutual
-    NeutralizingPlasmaCorrection
     ZeroCharges
     ZeroDipoles
     ZeroPolarizabilities

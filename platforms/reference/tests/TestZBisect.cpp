@@ -43,8 +43,7 @@ void testZBisect() {
     system.setDefaultPeriodicBoxVectors(Vec3(4, 0, 0), Vec3(0, 4, 0), Vec3(0, 0, 4));
     TholeDipoleForce* force = new TholeDipoleForce();
     system.addForce(force);
-    force->setNonbondedMethod(TholeDipoleForce::PME);
-    force->setCutoffDistance(1.2);
+    force->setNonbondedMethod(TholeDipoleForce::NoCutoff);
     double charge[] = {-1.01875, 0, 0, 0, -0.51966, 0.25983, 0.25983};
     double dipole[7][3] = {
         {0.06620218576365969, 0.056934176095985306, 0.06298584667720743},

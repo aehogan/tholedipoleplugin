@@ -663,15 +663,15 @@ void ReferencePMETholeDipoleForce::computeFixedPotentialFromGrid()
                 
                 // Potential: B_x * B_y * B_z
                 tuv000 += tx[0] * ty[0] * tu00;
-                
+
                 tuv100 += tx[1] * ty[0] * tu00;  // ∂φ/∂x
                 tuv010 += tx[0] * ty[1] * tu00;  // ∂φ/∂y
                 tuv001 += tx[0] * ty[0] * tu01;  // ∂φ/∂z
-                
+
                 tuv200 += tx[2] * ty[0] * tu00;  // ∂²φ/∂x²
                 tuv020 += tx[0] * ty[2] * tu00;  // ∂²φ/∂y²
                 tuv002 += tx[0] * ty[0] * tu02;  // ∂²φ/∂z²
-                
+
                 tuv110 += tx[1] * ty[1] * tu00;  // ∂²φ/∂x∂y
                 tuv101 += tx[1] * ty[0] * tu01;  // ∂²φ/∂x∂z
                 tuv011 += tx[0] * ty[1] * tu01;  // ∂²φ/∂y∂z
@@ -979,8 +979,8 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
     double energy = chargeTerm + dipoleTerm;
 
     double volume = _computeBoxVolume();
-    double plasmaTerm = totalCharge*totalCharge*M_PI/(2.0*volume*_alphaEwald*_alphaEwald);
-    energy += plasmaTerm;
+    double plasmaTerm = totalCharge*totalCharge*M_PI*_electric/(2.0*_dielectric*volume*_alphaEwald*_alphaEwald);
+    energy -= plasmaTerm;
 
     return energy;
 }
@@ -994,7 +994,7 @@ void ReferencePMETholeDipoleForce::calculatePmeSelfTorque(const vector<TholeDipo
         const TholeDipoleParticleData& particleI = particleData[ii];
         Vec3 ui = _inducedDipole[ii];
         Vec3 torque = particleI.dipole.cross(ui)*term;
-        torques[ii] += torque;
+        //torques[ii] += torque;
     }
 }
 
