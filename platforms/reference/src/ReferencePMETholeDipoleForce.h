@@ -86,6 +86,18 @@ public:
     void setPmeGridDimensions(vector<int>& pmeGridDimensions);
     void setPeriodicBoxSize(OpenMM::Vec3* vectors);
 
+    // Test accessors for PME internals
+    const vector<double>& getPmeBsplineModuli(int dim) const { return _pmeBsplineModuli[dim]; }
+    const vector<double4>& getThetai(int dim) const { return _thetai[dim]; }
+    const vector<IntVec>& getIGrid() const { return _iGrid; }
+    const vector<double>& getPhi() const { return _phi; }
+    const vector<double>& getPhid() const { return _phid; }
+    const std::complex<double>* getPmeGrid() const { return _pmeGrid; }
+    int getTotalGridSize() const { return _totalGridSize; }
+    const vector<TholeDipoleParticleData>& getTransformed() const { return _transformed; }
+    double getFixedMultipoleRecipEnergy() const { return _fixedMultipoleRecipEnergy; }
+    double getInducedDipoleRecipEnergy() const { return _inducedDipoleRecipEnergy; }
+
 protected:
     double calculateElectrostatic(const vector<TholeDipoleParticleData>& particleData,
                                    vector<Vec3>& torques, vector<Vec3>& forces) override;

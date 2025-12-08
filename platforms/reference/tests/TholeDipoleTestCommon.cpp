@@ -398,10 +398,10 @@ void compareForces(const string& testName,
     cout << "Creating TholeDipole context..." << endl;
     Context tholeContext(tholeDipoleSystem, integ1, *platform);
     cout << "TholeDipole context created successfully" << endl;
-    
-    // For AMOEBA, let OpenMM choose the best platform that supports it
+
+    // Use the same platform for AMOEBA for fair comparison
     cout << "Creating AMOEBA context..." << endl;
-    Context amoebaContext(amoebaSystem, integ2);
+    Context amoebaContext(amoebaSystem, integ2, *platform);
     cout << "AMOEBA context created successfully" << endl;
     
     cout << "TholeDipole platform: " << tholeContext.getPlatform().getName() << endl;
@@ -491,21 +491,24 @@ void compareForces(const string& testName,
                 Vec3 diff = tholeInducedDipoles[i] - amoebaInducedDipoles[i];
                 double dipoleDiff = sqrt(diff.dot(diff));
                 maxInducedDipoleDiff = max(maxInducedDipoleDiff, dipoleDiff);
-                
-                // Calculate force difference for this particle
-                Vec3 forceDiff = tholeForces[i] - amoebaForces[i];
-                double forceDiffMag = sqrt(forceDiff.dot(forceDiff));
-                
-                cout << "  Particle " << i << ":" << endl;
-                cout << "    TholeDipole Force:     (" << tholeForces[i][0] << ", " << tholeForces[i][1] << ", " << tholeForces[i][2] << ") kJ/mol/nm" << endl;
-                cout << "    AMOEBA Force:          (" << amoebaForces[i][0] << ", " << amoebaForces[i][1] << ", " << amoebaForces[i][2] << ") kJ/mol/nm" << endl;
-                cout << "    Force Difference:      " << forceDiffMag << " kJ/mol/nm" << endl;
-                cout << "    TholeDipole Permanent: (" << tholePermanentDipoles[i][0] << ", " << tholePermanentDipoles[i][1] << ", " << tholePermanentDipoles[i][2] << ")" << endl;
-                cout << "    AMOEBA Permanent:      (" << amoebaPermanentDipoles[i][0] << ", " << amoebaPermanentDipoles[i][1] << ", " << amoebaPermanentDipoles[i][2] << ")" << endl;
-                cout << "    TholeDipole Induced:   (" << tholeInducedDipoles[i][0] << ", " << tholeInducedDipoles[i][1] << ", " << tholeInducedDipoles[i][2] << ")" << endl;
-                cout << "    AMOEBA Induced:        (" << amoebaInducedDipoles[i][0] << ", " << amoebaInducedDipoles[i][1] << ", " << amoebaInducedDipoles[i][2] << ")" << endl;
-                cout << "    TholeDipole Total:     (" << tholeTotalDipoles[i][0] << ", " << tholeTotalDipoles[i][1] << ", " << tholeTotalDipoles[i][2] << ")" << endl;
-                cout << "    AMOEBA Total:          (" << amoebaTotalDipoles[i][0] << ", " << amoebaTotalDipoles[i][1] << ", " << amoebaTotalDipoles[i][2] << ")" << endl;
+
+                // Only print detailed output for first 2 particles
+                if (i < 2) {
+                    // Calculate force difference for this particle
+                    Vec3 forceDiff = tholeForces[i] - amoebaForces[i];
+                    double forceDiffMag = sqrt(forceDiff.dot(forceDiff));
+
+                    cout << "  Particle " << i << ":" << endl;
+                    cout << "    TholeDipole Force:     (" << tholeForces[i][0] << ", " << tholeForces[i][1] << ", " << tholeForces[i][2] << ") kJ/mol/nm" << endl;
+                    cout << "    AMOEBA Force:          (" << amoebaForces[i][0] << ", " << amoebaForces[i][1] << ", " << amoebaForces[i][2] << ") kJ/mol/nm" << endl;
+                    cout << "    Force Difference:      " << forceDiffMag << " kJ/mol/nm" << endl;
+                    cout << "    TholeDipole Permanent: (" << tholePermanentDipoles[i][0] << ", " << tholePermanentDipoles[i][1] << ", " << tholePermanentDipoles[i][2] << ")" << endl;
+                    cout << "    AMOEBA Permanent:      (" << amoebaPermanentDipoles[i][0] << ", " << amoebaPermanentDipoles[i][1] << ", " << amoebaPermanentDipoles[i][2] << ")" << endl;
+                    cout << "    TholeDipole Induced:   (" << tholeInducedDipoles[i][0] << ", " << tholeInducedDipoles[i][1] << ", " << tholeInducedDipoles[i][2] << ")" << endl;
+                    cout << "    AMOEBA Induced:        (" << amoebaInducedDipoles[i][0] << ", " << amoebaInducedDipoles[i][1] << ", " << amoebaInducedDipoles[i][2] << ")" << endl;
+                    cout << "    TholeDipole Total:     (" << tholeTotalDipoles[i][0] << ", " << tholeTotalDipoles[i][1] << ", " << tholeTotalDipoles[i][2] << ")" << endl;
+                    cout << "    AMOEBA Total:          (" << amoebaTotalDipoles[i][0] << ", " << amoebaTotalDipoles[i][1] << ", " << amoebaTotalDipoles[i][2] << ")" << endl;
+                }
             }
             
             cout << "  Max Force Difference: " << maxForceDiff << " kJ/mol/nm" << endl;

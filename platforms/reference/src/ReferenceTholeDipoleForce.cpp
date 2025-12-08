@@ -559,12 +559,12 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
             labDipole[i] += particleI.dipole[j] * rotationMatrix[j][i];
         }
     }
-    
+
     // More debug output for small systems
     if (particleI.particleIndex <= 5) {
         printf("  Final transformed dipole: (%.6f, %.6f, %.6f)\n", labDipole[0], labDipole[1], labDipole[2]);
     }
-    
+
     particleI.dipole = labDipole;
 }
 

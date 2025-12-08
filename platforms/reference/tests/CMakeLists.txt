@@ -6,8 +6,10 @@
 SET(INDIVIDUAL_TESTS
     TholeDipoleAmmoniaDirectPolarization
     TholeDipoleAmmoniaMutualPolarization
+    TholeDipoleAmmoniaNoPolarization
     TholeDipoleWaterPMEDirectPolarization
     TholeDipoleWaterPMEMutualPolarization
+    TholeDipoleWaterPMENoPolarization
     ParticleInducedDipoles
     ParticleLabFramePermanentDipoles
     ParticleTotalDipoles
@@ -32,6 +34,9 @@ SET(INDIVIDUAL_TESTS
     Bisector
     NoAxisType
     ThreeFold
+    PMEFunctionComparison
+    CustomPointCharges
+    TwoDipoles
 )
 
 FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})
