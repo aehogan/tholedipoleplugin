@@ -1,7 +1,6 @@
 #include "ReferenceTholeDipoleForce.h"
 #include "openmm/OpenMMException.h"
 #include "openmm/reference/SimTKOpenMMRealType.h"
-#include <iostream>
 
 using namespace TholeDipolePlugin;
 using namespace OpenMM;
@@ -518,13 +517,7 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
     const TholeDipoleParticleData* particleX,
     const TholeDipoleParticleData* particleY,
     int axisType) const {
-    
-    // Debug output for small systems
-    // if (particleI.particleIndex <= 5) {
-    //     printf("  Particle %d: Original dipole (%.6f, %.6f, %.6f), axisType=%d\n",
-    //            particleI.particleIndex, particleI.dipole[0], particleI.dipole[1], particleI.dipole[2], axisType);
-    // }
-    
+
     // Get the z-axis vector
     Vec3 vectorZ = particleZ->position - particleI.position;
     normalizeVec3(vectorZ);
@@ -572,14 +565,7 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
     
     // y-axis is the cross product of z and x
     vectorY = vectorZ.cross(vectorX);
-    
-    // Debug output for small systems
-    // if (particleI.particleIndex <= 5) {
-    //     printf("    vectorX: (%.6f, %.6f, %.6f)\n", vectorX[0], vectorX[1], vectorX[2]);
-    //     printf("    vectorY: (%.6f, %.6f, %.6f)\n", vectorY[0], vectorY[1], vectorY[2]);
-    //     printf("    vectorZ: (%.6f, %.6f, %.6f)\n", vectorZ[0], vectorZ[1], vectorZ[2]);
-    // }
-    
+
     // Build rotation matrix (each row is a basis vector)
     Vec3 rotationMatrix[3];
     rotationMatrix[0] = vectorX;
@@ -594,11 +580,6 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
             labDipole[i] += particleI.dipole[j] * rotationMatrix[j][i];
         }
     }
-
-    // More debug output for small systems
-    // if (particleI.particleIndex <= 5) {
-    //     printf("  Final transformed dipole: (%.6f, %.6f, %.6f)\n", labDipole[0], labDipole[1], labDipole[2]);
-    // }
 
     particleI.dipole = labDipole;
 }

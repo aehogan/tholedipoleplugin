@@ -5,7 +5,6 @@
 #include "pocketfft_hdronly.h"
 #include "openmm/internal/MSVC_erfc.h"
 #include <cmath>
-#include <iostream>
 
 using namespace TholeDipolePlugin;
 using namespace OpenMM;
