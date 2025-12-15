@@ -161,16 +161,16 @@ double ReferenceTholeDipoleForce::calculateForceAndEnergy(const vector<Vec3>& pa
 
 double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     const TholeDipoleParticleData& particleI,
-    const TholeDipoleParticleData& particleK,
+    const TholeDipoleParticleData& particleJ,
     double mScale,
     double iScale,
     vector<Vec3>& forces,
     vector<Vec3>& torques) const {
 
     const int iIndex = particleI.particleIndex;
-    const int kIndex = particleK.particleIndex;
+    const int jIndex = particleJ.particleIndex;
 
-    Vec3 deltaR = particleK.position - particleI.position;
+    Vec3 deltaR = particleJ.position - particleI.position;
     getPeriodicDelta(deltaR);
     const double r2 = deltaR.dot(deltaR);
     if (r2 == 0.0) return 0.0;
@@ -180,14 +180,14 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     const double rInv3 = rInv2 * rInv;
     const double rInv4 = rInv3 * rInv;
 
-    const Vec3 rhat = deltaR * rInv;  // points from I to K
+    const Vec3 rhat = deltaR * rInv;  // points from I to J
 
     const double qi = particleI.charge;
-    const double qk = particleK.charge;
+    const double qj = particleJ.charge;
     const Vec3& mi = particleI.dipole;
-    const Vec3& mk = particleK.dipole;
+    const Vec3& mj = particleJ.dipole;
     const Vec3& ui = _inducedDipole[iIndex];
-    const Vec3& uk = _inducedDipole[kIndex];
+    const Vec3& uj = _inducedDipole[jIndex];
 
     // Calculate damping factors based on damping type
     double damp1, damp2, d_damp1_dr, d_damp2_dr;
@@ -202,8 +202,8 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
         // Calculate Thole damping using global damping parameter
         const double a = _tholeDampingParameter;
         double r_pol_scale;
-        if (fabs(particleI.polarizability * particleK.polarizability) > 1e-12) {
-            r_pol_scale = pow(particleI.polarizability * particleK.polarizability, 1.0/6.0);
+        if (fabs(particleI.polarizability * particleJ.polarizability) > 1e-12) {
+            r_pol_scale = pow(particleI.polarizability * particleJ.polarizability, 1.0/6.0);
         }
         else {
             r_pol_scale = 1.0;
@@ -251,55 +251,55 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     }
 
     double energy = 0.0;
-    Vec3 forceK(0.0, 0.0, 0.0);
+    Vec3 forceJ(0.0, 0.0, 0.0);
 
     const double mi_dot_rhat = mi.dot(rhat);
-    const double mk_dot_rhat = mk.dot(rhat);
+    const double mj_dot_rhat = mj.dot(rhat);
     const double ui_dot_rhat = ui.dot(rhat);
-    const double uk_dot_rhat = uk.dot(rhat);
+    const double uj_dot_rhat = uj.dot(rhat);
 
-    const double mi_dot_mk = mi.dot(mk);
-    const double mi_dot_uk = mi.dot(uk);
-    const double ui_dot_mk = ui.dot(mk);
-    const double ui_dot_uk = ui.dot(uk);
+    const double mi_dot_mj = mi.dot(mj);
+    const double mi_dot_uj = mi.dot(uj);
+    const double ui_dot_mj = ui.dot(mj);
+    const double ui_dot_uj = ui.dot(uj);
 
     // Initialize electric fields for torque calculation
     Vec3 fieldAtI(0.0, 0.0, 0.0);
-    Vec3 fieldAtK(0.0, 0.0, 0.0);
+    Vec3 fieldAtJ(0.0, 0.0, 0.0);
 
     // --- (1) Charge-Charge (P-P) ---
-    double e_cc = mScale * qi * qk * rInv;
-    Vec3 f_cc = mScale * qi * qk * rInv2 * rhat;
+    double e_cc = mScale * qi * qj * rInv;
+    Vec3 f_cc = mScale * qi * qj * rInv2 * rhat;
     energy += e_cc;
-    forceK += f_cc;
+    forceJ += f_cc;
 
-    // Field at I due to charge K: E = -qk * r̂ / r²  (points from K to I, which is -rhat)
-    // Field at K due to charge I: E = qi * r̂ / r²   (points from I to K, which is rhat)
-    fieldAtI -= mScale * qk * rInv2 * rhat;
-    fieldAtK += mScale * qi * rInv2 * rhat;
+    // Field at I due to charge J: E = -qj * r̂ / r²  (points from J to I, which is -rhat)
+    // Field at J due to charge I: E = qi * r̂ / r²   (points from I to J, which is rhat)
+    fieldAtI -= mScale * qj * rInv2 * rhat;
+    fieldAtJ += mScale * qi * rInv2 * rhat;
 
     // --- (2) Charge-Dipole (P-P) ---
     Vec3 f_cd = mScale * (
-        qk * (3.0 * mi_dot_rhat * rhat - mi) * rInv3
-        - qi * (3.0 * mk_dot_rhat * rhat - mk) * rInv3
+        qj * (3.0 * mi_dot_rhat * rhat - mi) * rInv3
+        - qi * (3.0 * mj_dot_rhat * rhat - mj) * rInv3
     );
-    double e_cd = mScale * (qk * mi_dot_rhat - qi * mk_dot_rhat) * rInv2;
+    double e_cd = mScale * (qj * mi_dot_rhat - qi * mj_dot_rhat) * rInv2;
     energy += e_cd;
-    forceK += f_cd;
+    forceJ += f_cd;
 
     // --- (3) Dipole-Dipole (P-P) ---
     Vec3 f_dd = mScale * rInv4 * (
-        3.0 * (mi_dot_rhat * mk + mk_dot_rhat * mi + mi_dot_mk * rhat)
-        - 15.0 * mi_dot_rhat * mk_dot_rhat * rhat
+        3.0 * (mi_dot_rhat * mj + mj_dot_rhat * mi + mi_dot_mj * rhat)
+        - 15.0 * mi_dot_rhat * mj_dot_rhat * rhat
     );
-    double e_dd = mScale * (mi_dot_mk - 3.0 * mi_dot_rhat * mk_dot_rhat) * rInv3;
+    double e_dd = mScale * (mi_dot_mj - 3.0 * mi_dot_rhat * mj_dot_rhat) * rInv3;
     energy += e_dd;
-    forceK += f_dd;
+    forceJ += f_dd;
 
-    // Field at I due to dipole K: E = [3(mk·(-r̂))(-r̂) - mk] / r³ = [3(mk·r̂)r̂ - mk] / r³
-    // Field at K due to dipole I: E = [3(mi·r̂)r̂ - mi] / r³
-    fieldAtI += mScale * (3.0 * mk_dot_rhat * rhat - mk) * rInv3;
-    fieldAtK += mScale * (3.0 * mi_dot_rhat * rhat - mi) * rInv3;
+    // Field at I due to dipole J: E = [3(mj·(-r̂))(-r̂) - mj] / r³ = [3(mj·r̂)r̂ - mj] / r³
+    // Field at J due to dipole I: E = [3(mi·r̂)r̂ - mi] / r³
+    fieldAtI += mScale * (3.0 * mj_dot_rhat * rhat - mj) * rInv3;
+    fieldAtJ += mScale * (3.0 * mi_dot_rhat * rhat - mi) * rInv3;
 
     // --- Interactions involving Induced Dipoles ---
     // The P-I forces use mScale (same as field calculation), not iScale
@@ -310,87 +310,87 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
         // Force on induced dipole in damped charge field: F = (μ·∇)(damp1 * q * r/r³)
         // = -damp1 * q * (3(μ·r̂)r̂ - μ)/r³ + d_damp1_dr * q * (μ·r̂) * r̂/r²
         Vec3 f_ci_tensor = -mScale * (
-            qi * damp1 * (3.0 * uk_dot_rhat * rhat - uk) * rInv3
-            - qk * damp1 * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
+            qi * damp1 * (3.0 * uj_dot_rhat * rhat - uj) * rInv3
+            - qj * damp1 * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
         );
         Vec3 f_ci_damp = mScale * d_damp1_dr * rInv2 * (
-            qi * uk_dot_rhat - qk * ui_dot_rhat
+            qi * uj_dot_rhat - qj * ui_dot_rhat
         ) * rhat;
         Vec3 f_ci = f_ci_tensor + f_ci_damp;
-        double e_ci = -iScale * damp1 * (qi * uk_dot_rhat - qk * ui_dot_rhat) * rInv2;
+        double e_ci = -iScale * damp1 * (qi * uj_dot_rhat - qj * ui_dot_rhat) * rInv2;
         energy += e_ci;
-        forceK += f_ci;
+        forceJ += f_ci;
 
         // --- (5) Permanent Dipole-Induced Dipole (P-I) with Thole damping ---
         // damp1 for isotropic (μ·μ) term, damp2 for anisotropic (μ·r̂)(μ·r̂) term
         Vec3 f_di_tensor = mScale * rInv4 * (
-            // Anisotropic terms from -3(mi·r̂)(uk·r̂)/r³ and -3(mk·r̂)(ui·r̂)/r³
-            damp2 * 3.0 * (mi_dot_rhat * uk + uk_dot_rhat * mi)
-            - damp2 * 15.0 * mi_dot_rhat * uk_dot_rhat * rhat
-            + damp2 * 3.0 * (mk_dot_rhat * ui + ui_dot_rhat * mk)
-            - damp2 * 15.0 * mk_dot_rhat * ui_dot_rhat * rhat
-            // Isotropic terms from (mi·uk)/r³ and (mk·ui)/r³
-            + damp1 * 3.0 * (mi_dot_uk + ui_dot_mk) * rhat
+            // Anisotropic terms from -3(mi·r̂)(uj·r̂)/r³ and -3(mj·r̂)(ui·r̂)/r³
+            damp2 * 3.0 * (mi_dot_rhat * uj + uj_dot_rhat * mi)
+            - damp2 * 15.0 * mi_dot_rhat * uj_dot_rhat * rhat
+            + damp2 * 3.0 * (mj_dot_rhat * ui + ui_dot_rhat * mj)
+            - damp2 * 15.0 * mj_dot_rhat * ui_dot_rhat * rhat
+            // Isotropic terms from (mi·uj)/r³ and (mj·ui)/r³
+            + damp1 * 3.0 * (mi_dot_uj + ui_dot_mj) * rhat
         );
         Vec3 f_di_damp = -mScale * rInv3 * (
-            d_damp1_dr * (mi_dot_uk + ui_dot_mk)
-            - 3.0 * d_damp2_dr * (mi_dot_rhat * uk_dot_rhat + ui_dot_rhat * mk_dot_rhat)
+            d_damp1_dr * (mi_dot_uj + ui_dot_mj)
+            - 3.0 * d_damp2_dr * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat)
         ) * rhat;
         Vec3 f_di = f_di_tensor + f_di_damp;
         double e_di = iScale * (
-            damp1 * (mi_dot_uk + ui_dot_mk) * rInv3
-            - 3.0 * damp2 * (mi_dot_rhat * uk_dot_rhat + ui_dot_rhat * mk_dot_rhat) * rInv3
+            damp1 * (mi_dot_uj + ui_dot_mj) * rInv3
+            - 3.0 * damp2 * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat) * rInv3
         );
         energy += e_di;
-        forceK += f_di;
+        forceJ += f_di;
 
         // Add induced dipole contributions to fields with damping (use mScale for consistency)
-        fieldAtI += mScale * (3.0 * damp2 * uk_dot_rhat * rhat - damp1 * uk) * rInv3;
-        fieldAtK += mScale * (3.0 * damp2 * ui_dot_rhat * rhat - damp1 * ui) * rInv3;
+        fieldAtI += mScale * (3.0 * damp2 * uj_dot_rhat * rhat - damp1 * uj) * rInv3;
+        fieldAtJ += mScale * (3.0 * damp2 * ui_dot_rhat * rhat - damp1 * ui) * rInv3;
 
         // --- (6) Induced Dipole-Induced Dipole (I-I) ---
-        if (_polarizationType == Mutual && particleI.polarizability > 0 && particleK.polarizability > 0) {
-            // Energy: E = damp1 * (ui·uk) * r⁻³ - 3 * damp2 * (ui·r̂)(uk·r̂) * r⁻³
+        if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
+            // Energy: E = damp1 * (ui·uj) * r⁻³ - 3 * damp2 * (ui·r̂)(uj·r̂) * r⁻³
             double e_ii = iScale * (
-                damp1 * ui_dot_uk * rInv3
-                - 3.0 * damp2 * ui_dot_rhat * uk_dot_rhat * rInv3
+                damp1 * ui_dot_uj * rInv3
+                - 3.0 * damp2 * ui_dot_rhat * uj_dot_rhat * rInv3
             );
 
             // Force tensor: damp1 for isotropic, damp2 for anisotropic
             Vec3 f_ii_tensor = iScale * rInv4 * (
                 // Anisotropic terms
-                damp2 * 3.0 * (ui_dot_rhat * uk + uk_dot_rhat * ui)
-                - damp2 * 15.0 * ui_dot_rhat * uk_dot_rhat * rhat
+                damp2 * 3.0 * (ui_dot_rhat * uj + uj_dot_rhat * ui)
+                - damp2 * 15.0 * ui_dot_rhat * uj_dot_rhat * rhat
                 // Isotropic term
-                + damp1 * 3.0 * ui_dot_uk * rhat
+                + damp1 * 3.0 * ui_dot_uj * rhat
             );
 
             // Damping derivative contribution
             Vec3 f_ii_damp = -iScale * rInv3 * (
-                d_damp1_dr * ui_dot_uk
-                - 3.0 * d_damp2_dr * ui_dot_rhat * uk_dot_rhat
+                d_damp1_dr * ui_dot_uj
+                - 3.0 * d_damp2_dr * ui_dot_rhat * uj_dot_rhat
             ) * rhat;
 
             Vec3 f_ii = f_ii_tensor + f_ii_damp;
             energy += e_ii;
-            forceK += f_ii;
+            forceJ += f_ii;
         }
     }
 
     // Calculate torques as τ = μ × E
     // These are the torques on the permanent dipoles due to the electric fields
     Vec3 torqueI = mi.cross(fieldAtI);
-    Vec3 torqueK = mk.cross(fieldAtK);
+    Vec3 torqueJ = mj.cross(fieldAtJ);
 
     const double energyTotal = _electric * energy / _dielectric;
-    const Vec3 forceTotal = _electric * forceK / _dielectric;
+    const Vec3 forceTotal = _electric * forceJ / _dielectric;
     const Vec3 torqueITotal = _electric * torqueI / _dielectric;
-    const Vec3 torqueKTotal = _electric * torqueK / _dielectric;
+    const Vec3 torqueJTotal = _electric * torqueJ / _dielectric;
 
     forces[iIndex] -= forceTotal;
-    forces[kIndex] += forceTotal;
+    forces[jIndex] += forceTotal;
     torques[iIndex] += torqueITotal;
-    torques[kIndex] += torqueKTotal;
+    torques[jIndex] += torqueJTotal;
 
     return energyTotal;
 }
