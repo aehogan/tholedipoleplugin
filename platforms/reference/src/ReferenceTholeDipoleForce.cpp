@@ -402,12 +402,6 @@ double ReferenceTholeDipoleForce::calculateElectrostatic(
     vector<Vec3>& forces) {
 
     double energy = 0.0;
-    double energyPP = 0.0;
-    double energyPI = 0.0;
-
-    // Also compute μ·E directly from pairwise interactions for debugging
-    double muDotE_charge_pairwise = 0.0;
-    double muDotE_dipole_pairwise = 0.0;
 
     // Calculate pairwise interactions
     for (unsigned int i = 0; i < _numParticles; i++) {
@@ -421,57 +415,17 @@ double ReferenceTholeDipoleForce::calculateElectrostatic(
                 iScale = getScaleFactor(i, j, I_SCALE);
             }
 
-            // Calculate P-P only (iScale=0)
+            // Calculate P-P only (iScale=0) for energy
             vector<Vec3> tempForces(forces.size());
             vector<Vec3> tempTorques(torques.size());
             double ePP = calculateElectrostaticPairIxn(particleData[i], particleData[j],
                                                        mScale, 0.0, tempForces, tempTorques);
-            energyPP += ePP;
 
             // Calculate full interaction (for forces) but only add P-P to energy
             // The P-I energy is NOT computed pairwise - it's computed as -0.5*μ·E
-            double eFull = calculateElectrostaticPairIxn(particleData[i], particleData[j],
-                                                         mScale, iScale, forces, torques);
-            energyPI += (eFull - ePP);  // For debug only
-            energy += ePP;  // Only add P-P energy, not P-I
-
-            // Manually compute μ·E contributions for this pair
-            if (_numParticles == 8 && iScale > 0) {
-                Vec3 deltaR = particleData[j].position - particleData[i].position;
-                getPeriodicDelta(deltaR);
-                double r2 = deltaR.dot(deltaR);
-                double r = sqrt(r2);
-                double rInv = 1.0/r, rInv2 = rInv*rInv, rInv3 = rInv2*rInv;
-                Vec3 rhat = deltaR * rInv;
-
-                // Field at i from charge j: E = qj * (-rhat) / r² (rhat points from i to j, so field points from j to i)
-                // No wait, let me use the same convention as _fixedDipoleField
-                // In calculateFixedDipoleFieldPairIxn: rVec = rI - rJ, rHat = rVec/r (points from J to I)
-                // Here: deltaR = rJ - rI, rhat = deltaR/r (points from I to J)
-                // So rHat_field = -rhat
-                Vec3 rHat_field = -rhat;  // points from J to I (same as field calculation)
-
-                // Field at I from charge J
-                Vec3 E_qj_at_i = particleData[j].charge * rHat_field * rInv2;
-                // Field at J from charge I
-                Vec3 E_qi_at_j = particleData[i].charge * (-rHat_field) * rInv2;
-
-                // μ·E contributions (note: not multiplied by _electric yet)
-                double ui_dot_Eqj = _inducedDipole[i].dot(E_qj_at_i);
-                double uj_dot_Eqi = _inducedDipole[j].dot(E_qi_at_j);
-                muDotE_charge_pairwise += mScale * (ui_dot_Eqj + uj_dot_Eqi);
-
-                // Field at I from dipole J
-                double mj_dot_rHat = particleData[j].dipole.dot(rHat_field);
-                Vec3 E_mj_at_i = (3.0 * mj_dot_rHat * rHat_field - particleData[j].dipole) * rInv3;
-                // Field at J from dipole I
-                double mi_dot_rHat = particleData[i].dipole.dot(-rHat_field);
-                Vec3 E_mi_at_j = (3.0 * mi_dot_rHat * (-rHat_field) - particleData[i].dipole) * rInv3;
-
-                double ui_dot_Emj = _inducedDipole[i].dot(E_mj_at_i);
-                double uj_dot_Emi = _inducedDipole[j].dot(E_mi_at_j);
-                muDotE_dipole_pairwise += mScale * (ui_dot_Emj + uj_dot_Emi);
-            }
+            calculateElectrostaticPairIxn(particleData[i], particleData[j],
+                                          mScale, iScale, forces, torques);
+            energy += ePP;
         }
     }
 
