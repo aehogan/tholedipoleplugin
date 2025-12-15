@@ -1077,13 +1077,14 @@ void ReferencePMETholeDipoleForce::calculatePmeDirectInducedDipolePairIxn(
     double bn2 = (3.0 * bn1 + alsq2n * exp2a) / r2;
 
     // Calculate Thole damping factors for mutual polarization
-    double damp1 = 1.0, damp2 = 1.0;
+    // thole3 damps r^-3 terms, thole5 damps r^-5 terms
+    double thole3 = 1.0, thole5 = 1.0;
 
     if (_polarizationType == Mutual &&
         particleI.polarizability > 0 && particleJ.polarizability > 0) {
 
         if (_tholeDampingType == TholeDipoleForce::NoDamping) {
-            damp1 = damp2 = 1.0;
+            thole3 = thole5 = 1.0;
         }
         else {
             const double a = _tholeDampingParameter;
@@ -1099,25 +1100,25 @@ void ReferencePMETholeDipoleForce::calculatePmeDirectInducedDipolePairIxn(
             if (_tholeDampingType == TholeDipoleForce::Exponential) {
                 const double ar = a * r;
                 const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-                damp1 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-                damp2 = damp1 - exp_ar * (ar * ar * ar / 6.0);
+                thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+                thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
             }
             else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
                 const double au3 = a * u * u * u;
                 const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-                damp1 = 1.0 - exp_au3;
-                damp2 = 1.0 - (1.0 + au3) * exp_au3;
+                thole3 = 1.0 - exp_au3;
+                thole5 = 1.0 - (1.0 + au3) * exp_au3;
             }
             else { // TholeDipoleForce::Linear
                 const double s = a * r_pol_scale;
                 if (r >= s) {
-                    damp1 = damp2 = 1.0;
+                    thole3 = thole5 = 1.0;
                 } else {
                     const double v = r / s;
                     const double v2 = v * v;
                     const double v3 = v2 * v;
-                    damp1 = (4.0 - 3.0 * v) * v3;
-                    damp2 = v3 * v;
+                    thole3 = (4.0 - 3.0 * v) * v3;
+                    thole5 = v3 * v;
                 }
             }
         }
@@ -1128,11 +1129,11 @@ void ReferencePMETholeDipoleForce::calculatePmeDirectInducedDipolePairIxn(
 
     double uJr = uJ.dot(deltaR);
     // Field at I from dipole at J
-    Vec3 fieldAtI = -damp1 * uJ * bn1 + damp2 * deltaR * (bn2 * uJr);
+    Vec3 fieldAtI = -thole3 * uJ * bn1 + thole5 * deltaR * (bn2 * uJr);
 
     double uIr = uI.dot(deltaR);
     // Field at J from dipole at I
-    Vec3 fieldAtJ = -damp1 * uI * bn1 + damp2 * deltaR * (bn2 * uIr);
+    Vec3 fieldAtJ = -thole3 * uI * bn1 + thole5 * deltaR * (bn2 * uIr);
 
     field[particleI.particleIndex] += fieldAtI * iScale;
     field[particleJ.particleIndex] += fieldAtJ * iScale;

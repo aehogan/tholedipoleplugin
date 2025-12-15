@@ -190,13 +190,14 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     const Vec3& uj = _inducedDipole[jIndex];
 
     // Calculate damping factors based on damping type
-    double damp1, damp2, d_damp1_dr, d_damp2_dr;
-    d_damp1_dr = d_damp2_dr = 0.0;
+    // thole3 damps r^-3 terms (isotropic), thole5 damps r^-5 terms (anisotropic)
+    double thole3, thole5, dthole3, dthole5;
+    dthole3 = dthole5 = 0.0;
 
     if (_tholeDampingType == TholeDipoleForce::NoDamping) {
         // No damping
-        damp1 = damp2 = 1.0;
-        d_damp1_dr = d_damp2_dr = 0.0;
+        thole3 = thole5 = 1.0;
+        dthole3 = dthole5 = 0.0;
     }
     else {
         // Calculate Thole damping using global damping parameter
@@ -214,38 +215,38 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
             // ρ₁: Exponential damping
             const double ar = a * r;
             const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-            damp1 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-            damp2 = damp1 - exp_ar * (ar * ar * ar / 6.0);
+            thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+            thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
             if (ar < 50.0) {
-                d_damp1_dr = 0.5 * a * a * a * r * r * exp_ar;
-                d_damp2_dr = a * a * a * a * r * r * r * exp_ar / 6.0;
+                dthole3 = 0.5 * a * a * a * r * r * exp_ar;
+                dthole5 = a * a * a * a * r * r * r * exp_ar / 6.0;
             }
         }
         else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
             // ρ₂: Amoeba damping
             const double au3 = a * u * u * u;
             const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-            damp1 = 1.0 - exp_au3;
-            damp2 = 1.0 - (1.0 + au3) * exp_au3;
+            thole3 = 1.0 - exp_au3;
+            thole5 = 1.0 - (1.0 + au3) * exp_au3;
             if (au3 < 50.0) {
-                d_damp1_dr = exp_au3 * a * 3.0 * u * u / r_pol_scale;
-                d_damp2_dr = exp_au3 * a * 3.0 * u * u * au3 / r_pol_scale;
+                dthole3 = exp_au3 * a * 3.0 * u * u / r_pol_scale;
+                dthole5 = exp_au3 * a * 3.0 * u * u * au3 / r_pol_scale;
             }
         }
         else { // TholeDipoleForce::Linear
             // ρ₄: Linear damping
             const double s = a * r_pol_scale;
             if (r >= s) {
-                damp1 = damp2 = 1.0;
-                d_damp1_dr = d_damp2_dr = 0.0;
+                thole3 = thole5 = 1.0;
+                dthole3 = dthole5 = 0.0;
             } else {
                 const double v = r / s;
                 const double v2 = v * v;
                 const double v3 = v2 * v;
-                damp1 = (4.0 - 3.0 * v) * v3;
-                damp2 = v3 * v;
-                d_damp1_dr = (12.0 * v2 - 12.0 * v3) / s;
-                d_damp2_dr = 4.0 * v3 / s;
+                thole3 = (4.0 - 3.0 * v) * v3;
+                thole5 = v3 * v;
+                dthole3 = (12.0 * v2 - 12.0 * v3) / s;
+                dthole5 = 4.0 * v3 / s;
             }
         }
     }
@@ -307,68 +308,68 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     // But for energy, we use iScale to allow the P-P only calculation (iScale=0) to work
     if (fabs(iScale) > 0 || fabs(mScale) > 0) {
         // --- (4) Charge-Induced Dipole (P-I) with Thole damping ---
-        // Force on induced dipole in damped charge field: F = (μ·∇)(damp1 * q * r/r³)
-        // = -damp1 * q * (3(μ·r̂)r̂ - μ)/r³ + d_damp1_dr * q * (μ·r̂) * r̂/r²
+        // Force on induced dipole in damped charge field: F = (μ·∇)(thole3 * q * r/r³)
+        // = -thole3 * q * (3(μ·r̂)r̂ - μ)/r³ + dthole3 * q * (μ·r̂) * r̂/r²
         Vec3 f_ci_tensor = -mScale * (
-            qi * damp1 * (3.0 * uj_dot_rhat * rhat - uj) * rInv3
-            - qj * damp1 * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
+            qi * thole3 * (3.0 * uj_dot_rhat * rhat - uj) * rInv3
+            - qj * thole3 * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
         );
-        Vec3 f_ci_damp = mScale * d_damp1_dr * rInv2 * (
+        Vec3 f_ci_damp = mScale * dthole3 * rInv2 * (
             qi * uj_dot_rhat - qj * ui_dot_rhat
         ) * rhat;
         Vec3 f_ci = f_ci_tensor + f_ci_damp;
-        double e_ci = -iScale * damp1 * (qi * uj_dot_rhat - qj * ui_dot_rhat) * rInv2;
+        double e_ci = -iScale * thole3 * (qi * uj_dot_rhat - qj * ui_dot_rhat) * rInv2;
         energy += e_ci;
         forceJ += f_ci;
 
         // --- (5) Permanent Dipole-Induced Dipole (P-I) with Thole damping ---
-        // damp1 for isotropic (μ·μ) term, damp2 for anisotropic (μ·r̂)(μ·r̂) term
+        // thole3 for isotropic (μ·μ) term, thole5 for anisotropic (μ·r̂)(μ·r̂) term
         Vec3 f_di_tensor = mScale * rInv4 * (
             // Anisotropic terms from -3(mi·r̂)(uj·r̂)/r³ and -3(mj·r̂)(ui·r̂)/r³
-            damp2 * 3.0 * (mi_dot_rhat * uj + uj_dot_rhat * mi)
-            - damp2 * 15.0 * mi_dot_rhat * uj_dot_rhat * rhat
-            + damp2 * 3.0 * (mj_dot_rhat * ui + ui_dot_rhat * mj)
-            - damp2 * 15.0 * mj_dot_rhat * ui_dot_rhat * rhat
+            thole5 * 3.0 * (mi_dot_rhat * uj + uj_dot_rhat * mi)
+            - thole5 * 15.0 * mi_dot_rhat * uj_dot_rhat * rhat
+            + thole5 * 3.0 * (mj_dot_rhat * ui + ui_dot_rhat * mj)
+            - thole5 * 15.0 * mj_dot_rhat * ui_dot_rhat * rhat
             // Isotropic terms from (mi·uj)/r³ and (mj·ui)/r³
-            + damp1 * 3.0 * (mi_dot_uj + ui_dot_mj) * rhat
+            + thole3 * 3.0 * (mi_dot_uj + ui_dot_mj) * rhat
         );
         Vec3 f_di_damp = -mScale * rInv3 * (
-            d_damp1_dr * (mi_dot_uj + ui_dot_mj)
-            - 3.0 * d_damp2_dr * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat)
+            dthole3 * (mi_dot_uj + ui_dot_mj)
+            - 3.0 * dthole5 * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat)
         ) * rhat;
         Vec3 f_di = f_di_tensor + f_di_damp;
         double e_di = iScale * (
-            damp1 * (mi_dot_uj + ui_dot_mj) * rInv3
-            - 3.0 * damp2 * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat) * rInv3
+            thole3 * (mi_dot_uj + ui_dot_mj) * rInv3
+            - 3.0 * thole5 * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat) * rInv3
         );
         energy += e_di;
         forceJ += f_di;
 
         // Add induced dipole contributions to fields with damping (use mScale for consistency)
-        fieldAtI += mScale * (3.0 * damp2 * uj_dot_rhat * rhat - damp1 * uj) * rInv3;
-        fieldAtJ += mScale * (3.0 * damp2 * ui_dot_rhat * rhat - damp1 * ui) * rInv3;
+        fieldAtI += mScale * (3.0 * thole5 * uj_dot_rhat * rhat - thole3 * uj) * rInv3;
+        fieldAtJ += mScale * (3.0 * thole5 * ui_dot_rhat * rhat - thole3 * ui) * rInv3;
 
         // --- (6) Induced Dipole-Induced Dipole (I-I) ---
         if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
-            // Energy: E = damp1 * (ui·uj) * r⁻³ - 3 * damp2 * (ui·r̂)(uj·r̂) * r⁻³
+            // Energy: E = thole3 * (ui·uj) * r⁻³ - 3 * thole5 * (ui·r̂)(uj·r̂) * r⁻³
             double e_ii = iScale * (
-                damp1 * ui_dot_uj * rInv3
-                - 3.0 * damp2 * ui_dot_rhat * uj_dot_rhat * rInv3
+                thole3 * ui_dot_uj * rInv3
+                - 3.0 * thole5 * ui_dot_rhat * uj_dot_rhat * rInv3
             );
 
-            // Force tensor: damp1 for isotropic, damp2 for anisotropic
+            // Force tensor: thole3 for isotropic, thole5 for anisotropic
             Vec3 f_ii_tensor = iScale * rInv4 * (
                 // Anisotropic terms
-                damp2 * 3.0 * (ui_dot_rhat * uj + uj_dot_rhat * ui)
-                - damp2 * 15.0 * ui_dot_rhat * uj_dot_rhat * rhat
+                thole5 * 3.0 * (ui_dot_rhat * uj + uj_dot_rhat * ui)
+                - thole5 * 15.0 * ui_dot_rhat * uj_dot_rhat * rhat
                 // Isotropic term
-                + damp1 * 3.0 * ui_dot_uj * rhat
+                + thole3 * 3.0 * ui_dot_uj * rhat
             );
 
             // Damping derivative contribution
             Vec3 f_ii_damp = -iScale * rInv3 * (
-                d_damp1_dr * ui_dot_uj
-                - 3.0 * d_damp2_dr * ui_dot_rhat * uj_dot_rhat
+                dthole3 * ui_dot_uj
+                - 3.0 * dthole5 * ui_dot_rhat * uj_dot_rhat
             ) * rhat;
 
             Vec3 f_ii = f_ii_tensor + f_ii_damp;
@@ -729,8 +730,8 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     Vec3 rHat = rVec * rInv;
 
     // Calculate Thole damping factors for the fixed dipole field
-    // This matches AMOEBA's getAndScaleInverseRs function
-    double damp1 = 1.0, damp2 = 1.0;
+    // thole3 damps r^-3 terms, thole5 damps r^-5 terms
+    double thole3 = 1.0, thole5 = 1.0;
     if (_tholeDampingType != TholeDipoleForce::NoDamping) {
         const double a = _tholeDampingParameter;
         double r_pol_scale;
@@ -745,40 +746,34 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
             const double u = r / r_pol_scale;
             const double au3 = a * u * u * u;
             const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-            damp1 = 1.0 - exp_au3;
-            damp2 = 1.0 - (1.0 + au3) * exp_au3;
+            thole3 = 1.0 - exp_au3;
+            thole5 = 1.0 - (1.0 + au3) * exp_au3;
         }
         else if (_tholeDampingType == TholeDipoleForce::Exponential) {
             const double ar = a * r;
             const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-            damp1 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-            damp2 = damp1 - exp_ar * (ar * ar * ar / 6.0);
+            thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+            thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
         }
         else if (_tholeDampingType == TholeDipoleForce::Linear) {
             const double s = a * r_pol_scale;
             if (r < s) {
                 const double v = r / s;
                 const double v3 = v * v * v;
-                damp1 = (4.0 - 3.0 * v) * v3;
-                damp2 = v3 * v;
+                thole3 = (4.0 - 3.0 * v) * v3;
+                thole5 = v3 * v;
             }
         }
     }
 
     // --- Field at I due to J (permanent charge + permanent dipole) ---
-    // In AMOEBA, rr3 (damped 1/r³) multiplies both charge and dipole terms
-    // But rr3 appears with deltaR for charge: rr3 * q * deltaR = q * deltaR / r³ = q * rHat / r²
-    // So for charges, we actually want undamped 1/r² (since rr3*r = 1/r²)
-    // However, looking at AMOEBA more carefully: factor = rr3*q*deltaR is damped
-    // The "r" that would cancel is already in deltaR, so the charge field IS damped by damp1
     Vec3 fieldAtI(0.0, 0.0, 0.0);
-    // Charge contribution with Thole damping (matching AMOEBA)
-    fieldAtI += rHat * (damp1 * particleJ.charge * rInv2);
+    // Charge contribution with Thole damping
+    fieldAtI += rHat * (thole3 * particleJ.charge * rInv2);
     // Dipole contribution with Thole damping:
-    // E = damp1 * μ/r³ - damp2 * 3(μ·rHat)rHat/r³
-    // Rewritten: E = [3*damp2*(μ·rHat)rHat - damp1*μ] / r³
+    // E = [3*thole5*(μ·rHat)rHat - thole3*μ] / r³
     double muJ_dot_rHat = particleJ.dipole.dot(rHat);
-    fieldAtI += (3.0 * damp2 * muJ_dot_rHat * rHat - damp1 * particleJ.dipole) * rInv3;
+    fieldAtI += (3.0 * thole5 * muJ_dot_rHat * rHat - thole3 * particleJ.dipole) * rInv3;
 
     _fixedDipoleField[particleI.particleIndex] += fieldAtI * mScale;
 
@@ -788,10 +783,10 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     Vec3 rHatJI = -rHat;
 
     // Charge contribution with Thole damping
-    fieldAtJ += rHatJI * (damp1 * particleI.charge * rInv2);
+    fieldAtJ += rHatJI * (thole3 * particleI.charge * rInv2);
     // Dipole contribution with Thole damping
     double muI_dot_rHatJI = particleI.dipole.dot(rHatJI);
-    fieldAtJ += (3.0 * damp2 * muI_dot_rHatJI * rHatJI - damp1 * particleI.dipole) * rInv3;
+    fieldAtJ += (3.0 * thole5 * muI_dot_rHatJI * rHatJI - thole3 * particleI.dipole) * rInv3;
 
     _fixedDipoleField[particleJ.particleIndex] += fieldAtJ * mScale;
 }
@@ -869,11 +864,12 @@ void ReferenceTholeDipoleForce::calculateInducedDipolePairIxn(
     }
     else {
         // Calculate damping factors based on damping type
-        double damp1, damp2;
+        // thole3 damps r^-3 terms, thole5 damps r^-5 terms
+        double thole3, thole5;
 
         if (_tholeDampingType == TholeDipoleForce::NoDamping) {
             // No damping
-            damp1 = damp2 = 1.0;
+            thole3 = thole5 = 1.0;
         }
         else {
             // Use global Thole damping parameter
@@ -891,25 +887,25 @@ void ReferenceTholeDipoleForce::calculateInducedDipolePairIxn(
                 // ρ₁: Exponential damping
                 const double ar = a * r;
                 const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-                damp1 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-                damp2 = damp1 - exp_ar * (ar * ar * ar / 6.0);
+                thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+                thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
             }
             else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
                 // ρ₂: Amoeba damping
                 const double au3 = a * u * u * u;
                 const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-                damp1 = 1.0 - exp_au3;
-                damp2 = 1.0 - (1.0 + au3) * exp_au3;
+                thole3 = 1.0 - exp_au3;
+                thole5 = 1.0 - (1.0 + au3) * exp_au3;
             }
             else { // TholeDipoleForce::Linear
                 // ρ₄: Linear damping
                 const double s = a * r_pol_scale;
                 if (r >= s) {
-                    damp1 = damp2 = 1.0;
+                    thole3 = thole5 = 1.0;
                 } else {
                     const double v = r / s;
-                    damp1 = (4.0 - 3.0 * v) * v * v * v;
-                    damp2 = v * v * v * v;
+                    thole3 = (4.0 - 3.0 * v) * v * v * v;
+                    thole5 = v * v * v * v;
                 }
             }
         }
@@ -920,10 +916,10 @@ void ReferenceTholeDipoleForce::calculateInducedDipolePairIxn(
 
         // Field on I due to J with correct damping
         // E = [-μ/r³ + 3(μ·r̂)r̂/r³] with Thole damping
-        Vec3 fieldI = -damp1 * uj * rInv3 + 3.0 * damp2 * deltaR * (uj.dot(deltaR)) * rInv5;
+        Vec3 fieldI = -thole3 * uj * rInv3 + 3.0 * thole5 * deltaR * (uj.dot(deltaR)) * rInv5;
 
         // Field on J due to I with correct damping
-        Vec3 fieldJ = -damp1 * ui * rInv3 + 3.0 * damp2 * deltaR * (ui.dot(deltaR)) * rInv5;
+        Vec3 fieldJ = -thole3 * ui * rInv3 + 3.0 * thole5 * deltaR * (ui.dot(deltaR)) * rInv5;
 
         // Apply scaling
         field[particleI] += iScale * fieldI;
