@@ -83,6 +83,59 @@ void ReferenceTholeDipoleForce::setTholeDampingParameter(double tholeDampingPara
     _tholeDampingParameter = tholeDampingParameter;
 }
 
+void ReferenceTholeDipoleForce::computeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
+                                                           double& thole3, double& thole5,
+                                                           double& dthole3, double& dthole5) const {
+    thole3 = thole5 = 1.0;
+    dthole3 = dthole5 = 0.0;
+
+    if (_tholeDampingType == TholeDipoleForce::NoDamping) {
+        return;
+    }
+
+    const double a = _tholeDampingParameter;
+    double r_pol_scale;
+    if (fabs(polarizabilityI * polarizabilityJ) > 1e-12) {
+        r_pol_scale = pow(polarizabilityI * polarizabilityJ, 1.0/6.0);
+    } else {
+        r_pol_scale = 1.0;
+    }
+    const double u = r / r_pol_scale;
+
+    if (_tholeDampingType == TholeDipoleForce::Exponential) {
+        const double ar = a * r;
+        const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
+        thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+        thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
+        if (ar < 50.0) {
+            dthole3 = 0.5 * a * a * a * r * r * exp_ar;
+            dthole5 = a * a * a * a * r * r * r * exp_ar / 6.0;
+        }
+    }
+    else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
+        const double au3 = a * u * u * u;
+        const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
+        thole3 = 1.0 - exp_au3;
+        thole5 = 1.0 - (1.0 + au3) * exp_au3;
+        if (au3 < 50.0) {
+            dthole3 = exp_au3 * a * 3.0 * u * u / r_pol_scale;
+            dthole5 = exp_au3 * a * 3.0 * u * u * au3 / r_pol_scale;
+        }
+    }
+    else { // TholeDipoleForce::Linear
+        const double s = a * r_pol_scale;
+        if (r < s) {
+            const double v = r / s;
+            const double v2 = v * v;
+            const double v3 = v2 * v;
+            thole3 = (4.0 - 3.0 * v) * v3;
+            thole5 = v3 * v;
+            dthole3 = (12.0 * v2 - 12.0 * v3) / s;
+            dthole5 = 4.0 * v3 / s;
+        }
+    }
+}
+
 int ReferenceTholeDipoleForce::getMutualInducedDipoleConverged() const {
     return _mutualInducedDipoleConverged;
 }
@@ -185,67 +238,9 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     const Vec3& ui = _inducedDipole[iIndex];
     const Vec3& uj = _inducedDipole[jIndex];
 
-    // Calculate damping factors based on damping type
-    // thole3 damps r^-3 terms (isotropic), thole5 damps r^-5 terms (anisotropic)
     double thole3, thole5, dthole3, dthole5;
-    dthole3 = dthole5 = 0.0;
-
-    if (_tholeDampingType == TholeDipoleForce::NoDamping) {
-        // No damping
-        thole3 = thole5 = 1.0;
-        dthole3 = dthole5 = 0.0;
-    }
-    else {
-        // Calculate Thole damping using global damping parameter
-        const double a = _tholeDampingParameter;
-        double r_pol_scale;
-        if (fabs(particleI.polarizability * particleJ.polarizability) > 1e-12) {
-            r_pol_scale = pow(particleI.polarizability * particleJ.polarizability, 1.0/6.0);
-        }
-        else {
-            r_pol_scale = 1.0;
-        }
-        const double u = r / r_pol_scale;
-
-        if (_tholeDampingType == TholeDipoleForce::Exponential) {
-            // ρ₁: Exponential damping
-            const double ar = a * r;
-            const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-            thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-            thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
-            if (ar < 50.0) {
-                dthole3 = 0.5 * a * a * a * r * r * exp_ar;
-                dthole5 = a * a * a * a * r * r * r * exp_ar / 6.0;
-            }
-        }
-        else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
-            // ρ₂: Amoeba damping
-            const double au3 = a * u * u * u;
-            const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-            thole3 = 1.0 - exp_au3;
-            thole5 = 1.0 - (1.0 + au3) * exp_au3;
-            if (au3 < 50.0) {
-                dthole3 = exp_au3 * a * 3.0 * u * u / r_pol_scale;
-                dthole5 = exp_au3 * a * 3.0 * u * u * au3 / r_pol_scale;
-            }
-        }
-        else { // TholeDipoleForce::Linear
-            // ρ₄: Linear damping
-            const double s = a * r_pol_scale;
-            if (r >= s) {
-                thole3 = thole5 = 1.0;
-                dthole3 = dthole5 = 0.0;
-            } else {
-                const double v = r / s;
-                const double v2 = v * v;
-                const double v3 = v2 * v;
-                thole3 = (4.0 - 3.0 * v) * v3;
-                thole5 = v3 * v;
-                dthole3 = (12.0 * v2 - 12.0 * v3) / s;
-                dthole5 = 4.0 * v3 / s;
-            }
-        }
-    }
+    computeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
+                               thole3, thole5, dthole3, dthole5);
 
     double energy = 0.0;
     Vec3 forceJ(0.0, 0.0, 0.0);
@@ -640,42 +635,9 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     const double rInv3 = rInv2 * rInv;
     Vec3 rHat = rVec * rInv;
 
-    // Calculate Thole damping factors for the fixed dipole field
-    // thole3 damps r^-3 terms, thole5 damps r^-5 terms
-    double thole3 = 1.0, thole5 = 1.0;
-    if (_tholeDampingType != TholeDipoleForce::NoDamping) {
-        const double a = _tholeDampingParameter;
-        double r_pol_scale;
-        if (fabs(particleI.polarizability * particleJ.polarizability) > 1e-12) {
-            r_pol_scale = pow(particleI.polarizability * particleJ.polarizability, 1.0/6.0);
-        }
-        else {
-            r_pol_scale = 1.0;
-        }
-
-        if (_tholeDampingType == TholeDipoleForce::Amoeba) {
-            const double u = r / r_pol_scale;
-            const double au3 = a * u * u * u;
-            const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-            thole3 = 1.0 - exp_au3;
-            thole5 = 1.0 - (1.0 + au3) * exp_au3;
-        }
-        else if (_tholeDampingType == TholeDipoleForce::Exponential) {
-            const double ar = a * r;
-            const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-            thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-            thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
-        }
-        else if (_tholeDampingType == TholeDipoleForce::Linear) {
-            const double s = a * r_pol_scale;
-            if (r < s) {
-                const double v = r / s;
-                const double v3 = v * v * v;
-                thole3 = (4.0 - 3.0 * v) * v3;
-                thole5 = v3 * v;
-            }
-        }
-    }
+    double thole3, thole5, dthole3, dthole5;
+    computeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
+                               thole3, thole5, dthole3, dthole5);
 
     // --- Field at I due to J (permanent charge + permanent dipole) ---
     Vec3 fieldAtI(0.0, 0.0, 0.0);
@@ -774,52 +736,9 @@ void ReferenceTholeDipoleForce::calculateInducedDipolePairIxn(
         field[particleJ] += -inducedDipole[particleI] * rInv3 + deltaR * (3.0 * dDotDelta);
     }
     else {
-        // Calculate damping factors based on damping type
-        // thole3 damps r^-3 terms, thole5 damps r^-5 terms
-        double thole3, thole5;
-
-        if (_tholeDampingType == TholeDipoleForce::NoDamping) {
-            // No damping
-            thole3 = thole5 = 1.0;
-        }
-        else {
-            // Use global Thole damping parameter
-            const double a = _tholeDampingParameter;
-            double r_pol_scale;
-            if (fabs(polarizabilityI * polarizabilityJ) > 1e-12) {
-                r_pol_scale = pow(polarizabilityI * polarizabilityJ, 1.0/6.0);
-            }
-            else {
-                r_pol_scale = 1.0;
-            }
-            const double u = r / r_pol_scale;
-
-            if (_tholeDampingType == TholeDipoleForce::Exponential) {
-                // ρ₁: Exponential damping
-                const double ar = a * r;
-                const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-                thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-                thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
-            }
-            else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
-                // ρ₂: Amoeba damping
-                const double au3 = a * u * u * u;
-                const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-                thole3 = 1.0 - exp_au3;
-                thole5 = 1.0 - (1.0 + au3) * exp_au3;
-            }
-            else { // TholeDipoleForce::Linear
-                // ρ₄: Linear damping
-                const double s = a * r_pol_scale;
-                if (r >= s) {
-                    thole3 = thole5 = 1.0;
-                } else {
-                    const double v = r / s;
-                    thole3 = (4.0 - 3.0 * v) * v * v * v;
-                    thole5 = v * v * v * v;
-                }
-            }
-        }
+        double thole3, thole5, dthole3, dthole5;
+        computeTholeDampingFactors(r, polarizabilityI, polarizabilityJ,
+                                   thole3, thole5, dthole3, dthole5);
 
         // Get induced dipoles
         const Vec3& uj = inducedDipole[particleJ];

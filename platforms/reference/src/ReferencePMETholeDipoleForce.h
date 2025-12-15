@@ -181,6 +181,10 @@ private:
                                                   double mScale, double iScale,
                                                   vector<Vec3>& forces, vector<Vec3>& torques) const;
 
+    void computePmeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
+                                       double& thole_c, double& thole_d0, double& thole_d1,
+                                       double& dthole_c, double& dthole_d0, double& dthole_d1) const;
+
 };
 
 } // namespace TholeDipolePlugin

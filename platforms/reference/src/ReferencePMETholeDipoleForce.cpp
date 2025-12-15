@@ -53,6 +53,63 @@ void ReferencePMETholeDipoleForce::setAlphaEwald(double alphaEwald)
      _alphaEwald = alphaEwald;
 }
 
+void ReferencePMETholeDipoleForce::computePmeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
+                                                                  double& thole_c, double& thole_d0, double& thole_d1,
+                                                                  double& dthole_c, double& dthole_d0, double& dthole_d1) const
+{
+    thole_c = thole_d0 = thole_d1 = 1.0;
+    dthole_c = dthole_d0 = dthole_d1 = 1.0;
+
+    if (_tholeDampingType == TholeDipoleForce::NoDamping) {
+        return;
+    }
+
+    const double a = _tholeDampingParameter;
+    double r_pol_scale;
+    if (fabs(polarizabilityI * polarizabilityJ) > 1e-12) {
+        r_pol_scale = pow(polarizabilityI * polarizabilityJ, 1.0/6.0);
+    } else {
+        r_pol_scale = 1.0;
+    }
+    const double u = r / r_pol_scale;
+
+    if (_tholeDampingType == TholeDipoleForce::Exponential) {
+        const double ar = a * r;
+        const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
+        thole_c = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+        thole_d0 = thole_c;
+        thole_d1 = thole_c - exp_ar * (ar * ar * ar / 6.0);
+        dthole_c = thole_c;
+        dthole_d0 = thole_d0;
+        dthole_d1 = thole_d1;
+    }
+    else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
+        const double au3 = a * u * u * u;
+        const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
+        const double a2u6 = au3 * au3;
+        thole_c = 1.0 - exp_au3;
+        thole_d0 = 1.0 - exp_au3 * (1.0 + 1.5 * au3);
+        thole_d1 = 1.0 - exp_au3;
+        dthole_c = 1.0 - exp_au3 * (1.0 + 1.5 * au3);
+        dthole_d0 = 1.0 - exp_au3 * (1.0 + au3 + 1.5 * a2u6);
+        dthole_d1 = 1.0 - exp_au3 * (1.0 + au3);
+    }
+    else { // TholeDipoleForce::Linear
+        const double s = a * r_pol_scale;
+        if (r < s) {
+            const double v = r / s;
+            const double v2 = v * v;
+            const double v3 = v2 * v;
+            thole_c = (4.0 - 3.0 * v) * v3;
+            thole_d0 = thole_c;
+            thole_d1 = v3 * v;
+            dthole_c = thole_c;
+            dthole_d0 = thole_d0;
+            dthole_d1 = thole_d1;
+        }
+    }
+}
+
 void ReferencePMETholeDipoleForce::getPmeGridDimensions(vector<int>& pmeGridDimensions) const
 {
     pmeGridDimensions.resize(3);
@@ -1013,52 +1070,12 @@ void ReferencePMETholeDipoleForce::calculatePmeDirectInducedDipolePairIxn(
     alsq2n *= alsq2;
     double bn2 = (3.0 * bn1 + alsq2n * exp2a) / r2;
 
-    // Calculate Thole damping factors for mutual polarization
-    // thole3 damps r^-3 terms, thole5 damps r^-5 terms
     double thole3 = 1.0, thole5 = 1.0;
-
     if (_polarizationType == Mutual &&
         particleI.polarizability > 0 && particleJ.polarizability > 0) {
-
-        if (_tholeDampingType == TholeDipoleForce::NoDamping) {
-            thole3 = thole5 = 1.0;
-        }
-        else {
-            const double a = _tholeDampingParameter;
-            double r_pol_scale;
-            if (fabs(particleI.polarizability * particleJ.polarizability) > 1e-12) {
-                r_pol_scale = pow(particleI.polarizability * particleJ.polarizability, 1.0/6.0);
-            }
-            else {
-                r_pol_scale = 1.0;
-            }
-            const double u = r / r_pol_scale;
-
-            if (_tholeDampingType == TholeDipoleForce::Exponential) {
-                const double ar = a * r;
-                const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-                thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-                thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
-            }
-            else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
-                const double au3 = a * u * u * u;
-                const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-                thole3 = 1.0 - exp_au3;
-                thole5 = 1.0 - (1.0 + au3) * exp_au3;
-            }
-            else { // TholeDipoleForce::Linear
-                const double s = a * r_pol_scale;
-                if (r >= s) {
-                    thole3 = thole5 = 1.0;
-                } else {
-                    const double v = r / s;
-                    const double v2 = v * v;
-                    const double v3 = v2 * v;
-                    thole3 = (4.0 - 3.0 * v) * v3;
-                    thole5 = v3 * v;
-                }
-            }
-        }
+        double dthole3, dthole5;
+        computeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
+                                   thole3, thole5, dthole3, dthole5);
     }
 
     const Vec3& uI = inducedDipoles[particleI.particleIndex];
@@ -1265,65 +1282,12 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     double uJdI = uJ.dot(particleI.dipole);
     double uIuJ = uI.dot(uJ);
 
-    // Calculate Thole damping factors for energy and force derivatives
-    // Thole damping for PME direct space (matches AMOEBA)
-    // Energy damping: thole_c, thole_d0, thole_d1
-    // Force damping: dthole_c, dthole_d0, dthole_d1
     double thole_c = 1.0, thole_d0 = 1.0, thole_d1 = 1.0;
     double dthole_c = 1.0, dthole_d0 = 1.0, dthole_d1 = 1.0;
     if (particleI.polarizability > 0 && particleJ.polarizability > 0) {
-        if (_tholeDampingType != TholeDipoleForce::NoDamping) {
-            const double a = _tholeDampingParameter;
-            double r_pol_scale;
-            if (fabs(particleI.polarizability * particleJ.polarizability) > 1e-12) {
-                r_pol_scale = pow(particleI.polarizability * particleJ.polarizability, 1.0/6.0);
-            }
-            else {
-                r_pol_scale = 1.0;
-            }
-            const double u = r / r_pol_scale;
-
-            if (_tholeDampingType == TholeDipoleForce::Exponential) {
-                const double ar = a * r;
-                const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-                thole_c = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-                thole_d0 = thole_c;
-                thole_d1 = thole_c - exp_ar * (ar * ar * ar / 6.0);
-                dthole_c = thole_c;  // For exponential, same as energy
-                dthole_d0 = thole_d0;
-                dthole_d1 = thole_d1;
-            }
-            else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
-                const double au3 = a * u * u * u;
-                const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-                const double a2u6 = au3 * au3;
-                // Energy damping factors
-                thole_c = 1.0 - exp_au3;
-                thole_d0 = 1.0 - exp_au3 * (1.0 + 1.5 * au3);
-                thole_d1 = 1.0 - exp_au3;
-                // Force damping factors (from AMOEBA)
-                dthole_c = 1.0 - exp_au3 * (1.0 + 1.5 * au3);
-                dthole_d0 = 1.0 - exp_au3 * (1.0 + au3 + 1.5 * a2u6);
-                dthole_d1 = 1.0 - exp_au3 * (1.0 + au3);
-            }
-            else { // TholeDipoleForce::Linear
-                const double s = a * r_pol_scale;
-                if (r >= s) {
-                    thole_c = thole_d0 = thole_d1 = 1.0;
-                    dthole_c = dthole_d0 = dthole_d1 = 1.0;
-                } else {
-                    const double v = r / s;
-                    const double v2 = v * v;
-                    const double v3 = v2 * v;
-                    thole_c = (4.0 - 3.0 * v) * v3;
-                    thole_d0 = thole_c;
-                    thole_d1 = v3 * v;
-                    dthole_c = thole_c;  // Simplified for Linear
-                    dthole_d0 = thole_d0;
-                    dthole_d1 = thole_d1;
-                }
-            }
-        }
+        computePmeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
+                                      thole_c, thole_d0, thole_d1,
+                                      dthole_c, dthole_d0, dthole_d1);
     }
 
     // Permanent-induced energy (charge-induced, perm_dipole-induced): use mScale

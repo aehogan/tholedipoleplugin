@@ -424,6 +424,21 @@ protected:
     double _tholeDampingParameter;
 
     /**
+     * Compute Thole damping factors for a given particle pair.
+     *
+     * @param r                distance between particles
+     * @param polarizabilityI  polarizability of particle I
+     * @param polarizabilityJ  polarizability of particle J
+     * @param thole3           output: damping factor for r^-3 terms
+     * @param thole5           output: damping factor for r^-5 terms
+     * @param dthole3          output: derivative of thole3 w.r.t. r (optional, set to 0 if not needed)
+     * @param dthole5          output: derivative of thole5 w.r.t. r (optional, set to 0 if not needed)
+     */
+    void computeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
+                                    double& thole3, double& thole5,
+                                    double& dthole3, double& dthole5) const;
+
+    /**
      * Helper constructor method to centralize initialization of objects.
      */
     void initialize();
