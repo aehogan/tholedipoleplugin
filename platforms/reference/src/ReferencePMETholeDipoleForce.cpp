@@ -1504,6 +1504,22 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     // Add perm-ind full Coulomb for exclusion correction
     fullForce += fullIndForce;
 
+    static int debugPair = 0;
+    if (debugPair < 3 && (iIndex == 0 || jIndex == 0)) {
+        double prefac = _electric / _dielectric;
+        Vec3 permForceErfc = force - indForceTotal;
+        Vec3 permFullForce = fullForce - fullIndForce;
+        Vec3 permForceCorrected = (permForceErfc - (1.0 - mScale) * permFullForce) * prefac;
+        Vec3 indForceCorrected = (indForceTotal - (1.0 - mScale) * fullIndForce) * prefac;
+        cerr << "Pair " << iIndex << "-" << jIndex << " mScale=" << mScale << " iScale=" << iScale << " r=" << r << endl;
+        cerr << "  indForceTotal (erfc): " << indForceTotal << endl;
+        cerr << "  fullIndForce: " << fullIndForce << endl;
+        cerr << "  perm force: " << permForceCorrected << endl;
+        cerr << "  ind force: " << indForceCorrected << endl;
+        cerr << "  total force: " << (permForceCorrected + indForceCorrected) << endl;
+        debugPair++;
+    }
+
     // erfc-damped field for torques (permanent multipoles only - induced dipoles are isotropic)
     Vec3 fieldAtI_erfc = -particleJ.charge * bn1 * r * rhat + (bn2 * r2 * muJr * rhat - bn1 * particleJ.dipole);
     Vec3 fieldAtJ_erfc = particleI.charge * bn1 * r * rhat + (bn2 * r2 * muIr * rhat - bn1 * particleI.dipole);

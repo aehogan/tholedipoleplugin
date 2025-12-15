@@ -302,33 +302,51 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     fieldAtK += mScale * (3.0 * mi_dot_rhat * rhat - mi) * rInv3;
 
     // --- Interactions involving Induced Dipoles ---
-    if (fabs(iScale) > 0) {
-        // --- (4) Charge-Induced Dipole (P-I) ---
-        Vec3 f_ci = -iScale * (
-            qi * (3.0 * uk_dot_rhat * rhat - uk) * rInv3
-            - qk * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
+    // The P-I forces use mScale (same as field calculation), not iScale
+    // because the polarization force is μ · ∂E/∂r where E was computed with mScale
+    // But for energy, we use iScale to allow the P-P only calculation (iScale=0) to work
+    if (fabs(iScale) > 0 || fabs(mScale) > 0) {
+        // --- (4) Charge-Induced Dipole (P-I) with Thole damping ---
+        // Force on induced dipole in damped charge field: F = (μ·∇)(damp1 * q * r/r³)
+        // = -damp1 * q * (3(μ·r̂)r̂ - μ)/r³ + d_damp1_dr * q * (μ·r̂) * r̂/r²
+        Vec3 f_ci_tensor = -mScale * (
+            qi * damp1 * (3.0 * uk_dot_rhat * rhat - uk) * rInv3
+            - qk * damp1 * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
         );
-        double e_ci = -iScale * (qi * uk_dot_rhat - qk * ui_dot_rhat) * rInv2;
+        Vec3 f_ci_damp = mScale * d_damp1_dr * rInv2 * (
+            qi * uk_dot_rhat - qk * ui_dot_rhat
+        ) * rhat;
+        Vec3 f_ci = f_ci_tensor + f_ci_damp;
+        double e_ci = -iScale * damp1 * (qi * uk_dot_rhat - qk * ui_dot_rhat) * rInv2;
         energy += e_ci;
         forceK += f_ci;
 
-        // --- (5) Permanent Dipole-Induced Dipole (P-I) ---
-        Vec3 f_di = iScale * rInv4 * (
-            3.0 * (mi_dot_rhat * uk + uk_dot_rhat * mi + mi_dot_uk * rhat)
-            - 15.0 * mi_dot_rhat * uk_dot_rhat * rhat
-            + 3.0 * (mk_dot_rhat * ui + ui_dot_rhat * mk + ui_dot_mk * rhat)
-            - 15.0 * mk_dot_rhat * ui_dot_rhat * rhat
+        // --- (5) Permanent Dipole-Induced Dipole (P-I) with Thole damping ---
+        // damp1 for isotropic (μ·μ) term, damp2 for anisotropic (μ·r̂)(μ·r̂) term
+        Vec3 f_di_tensor = mScale * rInv4 * (
+            // Anisotropic terms from -3(mi·r̂)(uk·r̂)/r³ and -3(mk·r̂)(ui·r̂)/r³
+            damp2 * 3.0 * (mi_dot_rhat * uk + uk_dot_rhat * mi)
+            - damp2 * 15.0 * mi_dot_rhat * uk_dot_rhat * rhat
+            + damp2 * 3.0 * (mk_dot_rhat * ui + ui_dot_rhat * mk)
+            - damp2 * 15.0 * mk_dot_rhat * ui_dot_rhat * rhat
+            // Isotropic terms from (mi·uk)/r³ and (mk·ui)/r³
+            + damp1 * 3.0 * (mi_dot_uk + ui_dot_mk) * rhat
         );
+        Vec3 f_di_damp = -mScale * rInv3 * (
+            d_damp1_dr * (mi_dot_uk + ui_dot_mk)
+            - 3.0 * d_damp2_dr * (mi_dot_rhat * uk_dot_rhat + ui_dot_rhat * mk_dot_rhat)
+        ) * rhat;
+        Vec3 f_di = f_di_tensor + f_di_damp;
         double e_di = iScale * (
-            (mi_dot_uk + ui_dot_mk) * rInv3
-            - 3.0 * (mi_dot_rhat * uk_dot_rhat + ui_dot_rhat * mk_dot_rhat) * rInv3
+            damp1 * (mi_dot_uk + ui_dot_mk) * rInv3
+            - 3.0 * damp2 * (mi_dot_rhat * uk_dot_rhat + ui_dot_rhat * mk_dot_rhat) * rInv3
         );
         energy += e_di;
         forceK += f_di;
 
-        // Add induced dipole contributions to fields
-        fieldAtI += iScale * (3.0 * uk_dot_rhat * rhat - uk) * rInv3;
-        fieldAtK += iScale * (3.0 * ui_dot_rhat * rhat - ui) * rInv3;
+        // Add induced dipole contributions to fields with damping (use mScale for consistency)
+        fieldAtI += mScale * (3.0 * damp2 * uk_dot_rhat * rhat - damp1 * uk) * rInv3;
+        fieldAtK += mScale * (3.0 * damp2 * ui_dot_rhat * rhat - damp1 * ui) * rInv3;
 
         // --- (6) Induced Dipole-Induced Dipole (I-I) ---
         if (_polarizationType == Mutual && particleI.polarizability > 0 && particleK.polarizability > 0) {
@@ -338,10 +356,13 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
                 - 3.0 * damp2 * ui_dot_rhat * uk_dot_rhat * rInv3
             );
 
-            // Force tensor part (uses damp2 for anisotropic term)
-            Vec3 f_ii_tensor = iScale * damp2 * rInv4 * (
-                3.0 * (ui_dot_rhat * uk + uk_dot_rhat * ui + ui_dot_uk * rhat)
-                - 15.0 * ui_dot_rhat * uk_dot_rhat * rhat
+            // Force tensor: damp1 for isotropic, damp2 for anisotropic
+            Vec3 f_ii_tensor = iScale * rInv4 * (
+                // Anisotropic terms
+                damp2 * 3.0 * (ui_dot_rhat * uk + uk_dot_rhat * ui)
+                - damp2 * 15.0 * ui_dot_rhat * uk_dot_rhat * rhat
+                // Isotropic term
+                + damp1 * 3.0 * ui_dot_uk * rhat
             );
 
             // Damping derivative contribution
@@ -380,6 +401,12 @@ double ReferenceTholeDipoleForce::calculateElectrostatic(
     vector<Vec3>& forces) {
 
     double energy = 0.0;
+    double energyPP = 0.0;
+    double energyPI = 0.0;
+
+    // Also compute μ·E directly from pairwise interactions for debugging
+    double muDotE_charge_pairwise = 0.0;
+    double muDotE_dipole_pairwise = 0.0;
 
     // Calculate pairwise interactions
     for (unsigned int i = 0; i < _numParticles; i++) {
@@ -393,8 +420,57 @@ double ReferenceTholeDipoleForce::calculateElectrostatic(
                 iScale = getScaleFactor(i, j, I_SCALE);
             }
 
-            energy += calculateElectrostaticPairIxn(particleData[i], particleData[j],
-                                                    mScale, iScale, forces, torques);
+            // Calculate P-P only (iScale=0)
+            vector<Vec3> tempForces(forces.size());
+            vector<Vec3> tempTorques(torques.size());
+            double ePP = calculateElectrostaticPairIxn(particleData[i], particleData[j],
+                                                       mScale, 0.0, tempForces, tempTorques);
+            energyPP += ePP;
+
+            // Calculate full interaction (for forces) but only add P-P to energy
+            // The P-I energy is NOT computed pairwise - it's computed as -0.5*μ·E
+            double eFull = calculateElectrostaticPairIxn(particleData[i], particleData[j],
+                                                         mScale, iScale, forces, torques);
+            energyPI += (eFull - ePP);  // For debug only
+            energy += ePP;  // Only add P-P energy, not P-I
+
+            // Manually compute μ·E contributions for this pair
+            if (_numParticles == 8 && iScale > 0) {
+                Vec3 deltaR = particleData[j].position - particleData[i].position;
+                getPeriodicDelta(deltaR);
+                double r2 = deltaR.dot(deltaR);
+                double r = sqrt(r2);
+                double rInv = 1.0/r, rInv2 = rInv*rInv, rInv3 = rInv2*rInv;
+                Vec3 rhat = deltaR * rInv;
+
+                // Field at i from charge j: E = qj * (-rhat) / r² (rhat points from i to j, so field points from j to i)
+                // No wait, let me use the same convention as _fixedDipoleField
+                // In calculateFixedDipoleFieldPairIxn: rVec = rI - rJ, rHat = rVec/r (points from J to I)
+                // Here: deltaR = rJ - rI, rhat = deltaR/r (points from I to J)
+                // So rHat_field = -rhat
+                Vec3 rHat_field = -rhat;  // points from J to I (same as field calculation)
+
+                // Field at I from charge J
+                Vec3 E_qj_at_i = particleData[j].charge * rHat_field * rInv2;
+                // Field at J from charge I
+                Vec3 E_qi_at_j = particleData[i].charge * (-rHat_field) * rInv2;
+
+                // μ·E contributions (note: not multiplied by _electric yet)
+                double ui_dot_Eqj = _inducedDipole[i].dot(E_qj_at_i);
+                double uj_dot_Eqi = _inducedDipole[j].dot(E_qi_at_j);
+                muDotE_charge_pairwise += mScale * (ui_dot_Eqj + uj_dot_Eqi);
+
+                // Field at I from dipole J
+                double mj_dot_rHat = particleData[j].dipole.dot(rHat_field);
+                Vec3 E_mj_at_i = (3.0 * mj_dot_rHat * rHat_field - particleData[j].dipole) * rInv3;
+                // Field at J from dipole I
+                double mi_dot_rHat = particleData[i].dipole.dot(-rHat_field);
+                Vec3 E_mi_at_j = (3.0 * mi_dot_rHat * (-rHat_field) - particleData[i].dipole) * rInv3;
+
+                double ui_dot_Emj = _inducedDipole[i].dot(E_mj_at_i);
+                double uj_dot_Emi = _inducedDipole[j].dot(E_mi_at_j);
+                muDotE_dipole_pairwise += mScale * (ui_dot_Emj + uj_dot_Emi);
+            }
         }
     }
 
@@ -652,13 +728,57 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     const double rInv3 = rInv2 * rInv;
     Vec3 rHat = rVec * rInv;
 
+    // Calculate Thole damping factors for the fixed dipole field
+    // This matches AMOEBA's getAndScaleInverseRs function
+    double damp1 = 1.0, damp2 = 1.0;
+    if (_tholeDampingType != TholeDipoleForce::NoDamping) {
+        const double a = _tholeDampingParameter;
+        double r_pol_scale;
+        if (fabs(particleI.polarizability * particleJ.polarizability) > 1e-12) {
+            r_pol_scale = pow(particleI.polarizability * particleJ.polarizability, 1.0/6.0);
+        }
+        else {
+            r_pol_scale = 1.0;
+        }
+
+        if (_tholeDampingType == TholeDipoleForce::Amoeba) {
+            const double u = r / r_pol_scale;
+            const double au3 = a * u * u * u;
+            const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
+            damp1 = 1.0 - exp_au3;
+            damp2 = 1.0 - (1.0 + au3) * exp_au3;
+        }
+        else if (_tholeDampingType == TholeDipoleForce::Exponential) {
+            const double ar = a * r;
+            const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
+            damp1 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+            damp2 = damp1 - exp_ar * (ar * ar * ar / 6.0);
+        }
+        else if (_tholeDampingType == TholeDipoleForce::Linear) {
+            const double s = a * r_pol_scale;
+            if (r < s) {
+                const double v = r / s;
+                const double v3 = v * v * v;
+                damp1 = (4.0 - 3.0 * v) * v3;
+                damp2 = v3 * v;
+            }
+        }
+    }
+
     // --- Field at I due to J (permanent charge + permanent dipole) ---
+    // In AMOEBA, rr3 (damped 1/r³) multiplies both charge and dipole terms
+    // But rr3 appears with deltaR for charge: rr3 * q * deltaR = q * deltaR / r³ = q * rHat / r²
+    // So for charges, we actually want undamped 1/r² (since rr3*r = 1/r²)
+    // However, looking at AMOEBA more carefully: factor = rr3*q*deltaR is damped
+    // The "r" that would cancel is already in deltaR, so the charge field IS damped by damp1
     Vec3 fieldAtI(0.0, 0.0, 0.0);
-    // Charge contribution: E = q / r^2 * rHat
-    fieldAtI += rHat * (particleJ.charge * rInv2);
-    // Dipole contribution: E = [3(μ·rHat) rHat - μ] / r^3
+    // Charge contribution with Thole damping (matching AMOEBA)
+    fieldAtI += rHat * (damp1 * particleJ.charge * rInv2);
+    // Dipole contribution with Thole damping:
+    // E = damp1 * μ/r³ - damp2 * 3(μ·rHat)rHat/r³
+    // Rewritten: E = [3*damp2*(μ·rHat)rHat - damp1*μ] / r³
     double muJ_dot_rHat = particleJ.dipole.dot(rHat);
-    fieldAtI += (3.0 * muJ_dot_rHat * rHat - particleJ.dipole) * rInv3;
+    fieldAtI += (3.0 * damp2 * muJ_dot_rHat * rHat - damp1 * particleJ.dipole) * rInv3;
 
     _fixedDipoleField[particleI.particleIndex] += fieldAtI * mScale;
 
@@ -667,11 +787,11 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     // Vector from I to J is -rVec, so rHatJI = -rHat
     Vec3 rHatJI = -rHat;
 
-    // Charge contribution
-    fieldAtJ += rHatJI * (particleI.charge * rInv2);
-    // Dipole contribution
+    // Charge contribution with Thole damping
+    fieldAtJ += rHatJI * (damp1 * particleI.charge * rInv2);
+    // Dipole contribution with Thole damping
     double muI_dot_rHatJI = particleI.dipole.dot(rHatJI);
-    fieldAtJ += (3.0 * muI_dot_rHatJI * rHatJI - particleI.dipole) * rInv3;
+    fieldAtJ += (3.0 * damp2 * muI_dot_rHatJI * rHatJI - damp1 * particleI.dipole) * rInv3;
 
     _fixedDipoleField[particleJ.particleIndex] += fieldAtJ * mScale;
 }
