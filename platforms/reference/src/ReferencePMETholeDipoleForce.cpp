@@ -1217,14 +1217,6 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
 void ReferencePMETholeDipoleForce::calculatePmeSelfTorque(const vector<TholeDipoleParticleData>& particleData,
                                                           vector<Vec3>& torques) const
 {
-    double term = (2.0/3.0)*(_electric/_dielectric)*(_alphaEwald*_alphaEwald*_alphaEwald)/SQRT_PI;
-
-    for (unsigned int ii = 0; ii < _numParticles; ii++) {
-        const TholeDipoleParticleData& particleI = particleData[ii];
-        Vec3 ui = _inducedDipole[ii];
-        Vec3 torque = particleI.dipole.cross(ui)*term;
-        //torques[ii] += torque;
-    }
 }
 
 double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
