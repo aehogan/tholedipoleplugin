@@ -1273,7 +1273,7 @@ void ReferenceTholeDipoleForce::calculateLabFramePermanentDipoles(const vector<V
           multipoleCovalentInfo, particleData);
     
     outputRotatedPermanentDipoles.resize(_numParticles);
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         outputRotatedPermanentDipoles[i] = particleData[i].dipole;
     }
 }
@@ -1295,7 +1295,7 @@ void ReferenceTholeDipoleForce::calculateTotalDipoles(const vector<Vec3>& partic
           multipoleCovalentInfo, particleData);
     
     outputTotalDipoles.resize(_numParticles);
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         for (int j = 0; j < 3; j++) {
             outputTotalDipoles[i][j] = particleData[i].dipole[j] + _inducedDipole[i][j];
         }
