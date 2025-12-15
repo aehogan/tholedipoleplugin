@@ -405,8 +405,7 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleFieldPairIxn(const TholeD
     Vec3 fim = -particleJ.dipole * bn1 - deltaR * (bn1 * particleJ.charge - bn2 * djr);
     Vec3 fjm = -particleI.dipole * bn1 + deltaR * (bn1 * particleI.charge + bn2 * dir);
 
-    // Calculate Thole-damped + mScale-modified inverse distances (drr3, drr5 in AMOEBA notation)
-    // dampingFactor = polarizability^(1/6)
+    // Thole damping factors
     double dampI = pow(particleI.polarizability, 1.0/6.0);
     double dampJ = pow(particleJ.polarizability, 1.0/6.0);
     double damp = dampI * dampJ;
@@ -417,7 +416,7 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleFieldPairIxn(const TholeD
     if (damp > 0.0) {
         double ratio = r / damp;
         ratio = ratio * ratio * ratio;
-        double pgamma = _tholeDampingParameter;  // a parameter
+        double pgamma = _tholeDampingParameter;
         double dampExp = -pgamma * ratio;
 
         if (dampExp > -50.0) {
@@ -427,9 +426,6 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleFieldPairIxn(const TholeD
         }
     }
 
-    // dampedMScale combines Thole damping with mScale
-    // When mScale=1 (non-excluded): use Thole-damped field
-    // When mScale=0 (excluded): dampedMScale=0, so drr3 = 1/r³ (full undamped)
     double dampedMScale3 = scaleFactor3 * mScale;
     double dampedMScale5 = scaleFactor5 * mScale;
 
@@ -438,16 +434,12 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleFieldPairIxn(const TholeD
     double rInv3 = rInv2 * rInv;
     double rInv5 = rInv3 * rInv2;
 
-    // drr3, drr5 are the Thole-damped and mScale-modified inverse distances
-    // Following AMOEBA: drr3 = (1 - dampedMScale3) / r³
     double drr3 = (1.0 - dampedMScale3) * rInv3;
     double drr5 = 3.0 * (1.0 - dampedMScale5) * rInv5;
 
-    // fid/fjd: the field that needs to be subtracted (Thole-damped exclusion correction)
     Vec3 fid = -particleJ.dipole * drr3 - deltaR * (drr3 * particleJ.charge - drr5 * djr);
     Vec3 fjd = -particleI.dipole * drr3 + deltaR * (drr3 * particleI.charge + drr5 * dir);
 
-    // Total field contribution = fim - fid (AMOEBA formula)
     Vec3 field_contrib_I = fim - fid;
     Vec3 field_contrib_J = fjm - fjd;
 
@@ -459,11 +451,9 @@ void ReferencePMETholeDipoleForce::computeBSplinePoint(double* data, double* dda
                                                        double* d2data, double* d3data,
                                                        double w, int order)
 {
-    // Use 2D array approach matching AMOEBA implementation
-    // array[i][j] = ARRAY(i+1, j+1) in AMOEBA notation (0-indexed here)
     double array[THOLE_PME_ORDER][THOLE_PME_ORDER];
 
-    // Initialize order-2 spline
+    // Order-2 spline
     array[1][1] = w;
     array[1][0] = 1.0 - w;
 
@@ -472,7 +462,7 @@ void ReferencePMETholeDipoleForce::computeBSplinePoint(double* data, double* dda
     array[2][1] = 0.5 * ((1.0 + w) * array[1][0] + (2.0 - w) * array[1][1]);
     array[2][0] = 0.5 * (1.0 - w) * array[1][0];
 
-    // Compute standard B-spline recursion to desired order
+    // Higher order recursion
     for (int i = 4; i <= order; i++) {
         int k = i - 1;
         double denom = 1.0 / k;
@@ -482,40 +472,34 @@ void ReferencePMETholeDipoleForce::computeBSplinePoint(double* data, double* dda
         array[i-1][0] = denom * (1.0 - w) * array[k-1][0];
     }
 
-    // Get coefficients for first derivative (apply difference to order-1 row)
-    // AMOEBA loop: for i from order-1 down to 2 (1-indexed), which is order-2 down to 1 (0-indexed)
-    int k = order - 2;  // index for order-1 row (0-indexed)
+    // First derivative coefficients
+    int k = order - 2;
     array[k][order-1] = array[k][order-2];
     for (int i = order - 2; i >= 1; i--)
         array[k][i] = array[k][i-1] - array[k][i];
     array[k][0] = -array[k][0];
 
-    // Get coefficients for second derivative (apply difference twice to order-2 row)
-    k = order - 3;  // index for order-2 row
-    // First difference
+    // Second derivative coefficients
+    k = order - 3;
     array[k][order-2] = array[k][order-3];
     for (int i = order - 3; i >= 1; i--)
         array[k][i] = array[k][i-1] - array[k][i];
     array[k][0] = -array[k][0];
-    // Second difference
     array[k][order-1] = array[k][order-2];
     for (int i = order - 2; i >= 1; i--)
         array[k][i] = array[k][i-1] - array[k][i];
     array[k][0] = -array[k][0];
 
-    // Get coefficients for third derivative (apply difference three times to order-3 row)
-    k = order - 4;  // index for order-3 row
-    // First difference
+    // Third derivative coefficients
+    k = order - 4;
     array[k][order-3] = array[k][order-4];
     for (int i = order - 4; i >= 1; i--)
         array[k][i] = array[k][i-1] - array[k][i];
     array[k][0] = -array[k][0];
-    // Second difference
     array[k][order-2] = array[k][order-3];
     for (int i = order - 3; i >= 1; i--)
         array[k][i] = array[k][i-1] - array[k][i];
     array[k][0] = -array[k][0];
-    // Third difference
     array[k][order-1] = array[k][order-2];
     for (int i = order - 2; i >= 1; i--)
         array[k][i] = array[k][i-1] - array[k][i];
@@ -532,25 +516,15 @@ void ReferencePMETholeDipoleForce::computeBSplinePoint(double* data, double* dda
 
 void ReferencePMETholeDipoleForce::updateGridIndexAndFraction(const vector<TholeDipoleParticleData>& particleData)
 {
-    // Match AMOEBA's grid indexing convention exactly
     for (int i = 0; i < _numParticles; i++) {
         Vec3 position = particleData[i].position;
-
         for (int d = 0; d < 3; d++) {
-            // Compute fractional coordinate (position in [0,1] box)
             double w = position[0]*_recipBoxVectors[0][d] +
                        position[1]*_recipBoxVectors[1][d] +
                        position[2]*_recipBoxVectors[2][d];
-
-            // AMOEBA centering: shift to center around 0.5
             double fr = _pmeGridDimensions[d] * (w - (int)(w + 0.5) + 0.5);
             int ifr = static_cast<int>(floor(fr));
-
-            // B-spline fractional offset
             _particleFraction[i][d] = fr - ifr;
-
-            // AMOEBA convention: grid starting index is ifr - ORDER + 1
-            // This positions ifr at the END of the B-spline support
             int igrid = ifr - THOLE_PME_ORDER + 1;
             if (igrid < 0) igrid += _pmeGridDimensions[d];
             _iGrid[i][d] = igrid;
@@ -919,14 +893,7 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
     const vector<TholeDipoleParticleData>& particleData,
     vector<Vec3>& forces, vector<Vec3>& torques) const
 {
-    // Derivative index mappings for charge + dipole (indices 0-3)
-    // deriv1[k] gives the index for d/dx of component k
-    // deriv2[k] gives the index for d/dy of component k
-    // deriv3[k] gives the index for d/dz of component k
-    // For charge (k=0): derivatives are indices 1,2,3 (first derivatives)
-    // For dipole_x (k=1): derivatives are indices 4,7,8 (second derivatives involving x)
-    // For dipole_y (k=2): derivatives are indices 7,5,9
-    // For dipole_z (k=3): derivatives are indices 8,9,6
+    // Derivative index mappings: deriv1/2/3[k] = d/dx, d/dy, d/dz of component k
     const int deriv1[] = {1, 4, 7, 8};
     const int deriv2[] = {2, 7, 5, 9};
     const int deriv3[] = {3, 8, 9, 6};
@@ -942,37 +909,28 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
 
     double energy = 0.0;
     for (int i = 0; i < _numParticles; i++) {
-        // Transform induced dipole to fractional coordinates
         Vec3 inducedDipole;
         inducedDipole[0] = _inducedDipole[i][0]*cartToFrac[0][0] + _inducedDipole[i][1]*cartToFrac[0][1] + _inducedDipole[i][2]*cartToFrac[0][2];
         inducedDipole[1] = _inducedDipole[i][0]*cartToFrac[1][0] + _inducedDipole[i][1]*cartToFrac[1][1] + _inducedDipole[i][2]*cartToFrac[1][2];
         inducedDipole[2] = _inducedDipole[i][0]*cartToFrac[2][0] + _inducedDipole[i][1]*cartToFrac[2][1] + _inducedDipole[i][2]*cartToFrac[2][2];
 
-        // Energy: induced dipole dotted with field from permanent multipoles
-        // _phi contains the potential from permanent multipoles
         energy += inducedDipole[0]*_phi[10*i+1] + inducedDipole[1]*_phi[10*i+2] + inducedDipole[2]*_phi[10*i+3];
 
-        // Compute torque on permanent dipoles from induced potential field
+        // Torque on permanent dipoles from induced potential
         const double* phi = &cphid[10*i];
         torques[i][0] += 0.5*_electric*(particleData[i].dipole[2]*phi[2] - particleData[i].dipole[1]*phi[3]);
         torques[i][1] += 0.5*_electric*(particleData[i].dipole[0]*phi[3] - particleData[i].dipole[2]*phi[1]);
         torques[i][2] += 0.5*_electric*(particleData[i].dipole[1]*phi[1] - particleData[i].dipole[0]*phi[2]);
 
-        // Get permanent multipole in fractional coordinates
         double multipole[4];
         multipole[0] = particleData[i].charge;
         multipole[1] = _transformed[i].dipole[0];
         multipole[2] = _transformed[i].dipole[1];
         multipole[3] = _transformed[i].dipole[2];
 
-        // Compute force
-        // AMOEBA uses (d+p) for the induced dipole in force calculations, then scales by 0.5.
-        // Since TholeDipole has d=p (single induced dipole), we use 2*d to match.
-        // The 0.5 factor at the end gives: 0.5 * (2*d*dphi + multipole*2*dphid) = d*dphi + multipole*dphid
         Vec3 f(0.0, 0.0, 0.0);
 
-        // Force on induced dipole from field gradient of permanent multipoles (_phi)
-        // Uses 2*inducedDipole to match AMOEBA's (d+p) convention
+        // Force on induced dipole from permanent multipole field gradient
         Vec3 f_ind(0.0, 0.0, 0.0);
         for (int k = 0; k < 3; k++) {
             int j1 = deriv1[k+1];
@@ -983,9 +941,7 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
             f_ind[2] += 2.0*inducedDipole[k]*_phi[10*i+j3];
         }
 
-        // For mutual polarization, add the induced-induced reciprocal space force
-        // This is the force on induced dipoles from the gradient of the induced potential
-        // Uses 2*inducedDipole to match AMOEBA's (d*phip + p*phid) = 2*d*phid when d=p
+        // Mutual: induced-induced reciprocal force
         if (_polarizationType == Mutual) {
             for (int k = 0; k < 3; k++) {
                 int j1 = deriv1[k+1];
@@ -998,8 +954,7 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
         }
         f += f_ind;
 
-        // Force on permanent multipoles from induced potential (_phid)
-        // Uses 2*_phid to match AMOEBA's _phidp = 2*_phid when d=p
+        // Force on permanent multipoles from induced potential
         Vec3 f_perm(0.0, 0.0, 0.0);
         for (int k = 0; k < 4; k++) {
             f_perm[0] += multipole[k]*2.0*_phid[10*i+deriv1[k]];

@@ -136,10 +136,7 @@ double ReferenceTholeDipoleForce::calculateForceAndEnergy(const vector<Vec3>& pa
     initializeVec3Vector(torques);
     double energy = calculateElectrostatic(particleData, torques, forces);
 
-    // Add polarization energy as -0.5 * μ·E_perm for NoCutoff only
-    // For PME, the polarization energy is handled differently in the PME calculation
-    // This is the correct form that accounts for both the interaction energy
-    // and the cost to create the induced dipole
+    // Add polarization energy (-0.5 * μ·E) for NoCutoff; PME handles this differently
     double polarizationEnergy = 0.0;
     if (_nonbondedMethod != PME) {
         const double scale_factor = _electric / _dielectric;
@@ -273,8 +270,6 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     energy += e_cc;
     forceJ += f_cc;
 
-    // Field at I due to charge J: E = -qj * r̂ / r²  (points from J to I, which is -rhat)
-    // Field at J due to charge I: E = qi * r̂ / r²   (points from I to J, which is rhat)
     fieldAtI -= mScale * qj * rInv2 * rhat;
     fieldAtJ += mScale * qi * rInv2 * rhat;
 
@@ -296,19 +291,12 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     energy += e_dd;
     forceJ += f_dd;
 
-    // Field at I due to dipole J: E = [3(mj·(-r̂))(-r̂) - mj] / r³ = [3(mj·r̂)r̂ - mj] / r³
-    // Field at J due to dipole I: E = [3(mi·r̂)r̂ - mi] / r³
     fieldAtI += mScale * (3.0 * mj_dot_rhat * rhat - mj) * rInv3;
     fieldAtJ += mScale * (3.0 * mi_dot_rhat * rhat - mi) * rInv3;
 
-    // --- Interactions involving Induced Dipoles ---
-    // The P-I forces use mScale (same as field calculation), not iScale
-    // because the polarization force is μ · ∂E/∂r where E was computed with mScale
-    // But for energy, we use iScale to allow the P-P only calculation (iScale=0) to work
+    // --- Induced Dipole Interactions (P-I and I-I) ---
     if (fabs(iScale) > 0 || fabs(mScale) > 0) {
-        // --- (4) Charge-Induced Dipole (P-I) with Thole damping ---
-        // Force on induced dipole in damped charge field: F = (μ·∇)(thole3 * q * r/r³)
-        // = -thole3 * q * (3(μ·r̂)r̂ - μ)/r³ + dthole3 * q * (μ·r̂) * r̂/r²
+        // Charge-Induced Dipole (P-I) with Thole damping
         Vec3 f_ci_tensor = -mScale * (
             qi * thole3 * (3.0 * uj_dot_rhat * rhat - uj) * rInv3
             - qj * thole3 * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
@@ -321,15 +309,12 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
         energy += e_ci;
         forceJ += f_ci;
 
-        // --- (5) Permanent Dipole-Induced Dipole (P-I) with Thole damping ---
-        // thole3 for isotropic (μ·μ) term, thole5 for anisotropic (μ·r̂)(μ·r̂) term
+        // Permanent Dipole-Induced Dipole (P-I) with Thole damping
         Vec3 f_di_tensor = mScale * rInv4 * (
-            // Anisotropic terms from -3(mi·r̂)(uj·r̂)/r³ and -3(mj·r̂)(ui·r̂)/r³
             thole5 * 3.0 * (mi_dot_rhat * uj + uj_dot_rhat * mi)
             - thole5 * 15.0 * mi_dot_rhat * uj_dot_rhat * rhat
             + thole5 * 3.0 * (mj_dot_rhat * ui + ui_dot_rhat * mj)
             - thole5 * 15.0 * mj_dot_rhat * ui_dot_rhat * rhat
-            // Isotropic terms from (mi·uj)/r³ and (mj·ui)/r³
             + thole3 * 3.0 * (mi_dot_uj + ui_dot_mj) * rhat
         );
         Vec3 f_di_damp = -mScale * rInv3 * (
@@ -344,28 +329,20 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
         energy += e_di;
         forceJ += f_di;
 
-        // Add induced dipole contributions to fields with damping (use mScale for consistency)
         fieldAtI += mScale * (3.0 * thole5 * uj_dot_rhat * rhat - thole3 * uj) * rInv3;
         fieldAtJ += mScale * (3.0 * thole5 * ui_dot_rhat * rhat - thole3 * ui) * rInv3;
 
-        // --- (6) Induced Dipole-Induced Dipole (I-I) ---
+        // Induced Dipole-Induced Dipole (I-I)
         if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
-            // Energy: E = thole3 * (ui·uj) * r⁻³ - 3 * thole5 * (ui·r̂)(uj·r̂) * r⁻³
             double e_ii = iScale * (
                 thole3 * ui_dot_uj * rInv3
                 - 3.0 * thole5 * ui_dot_rhat * uj_dot_rhat * rInv3
             );
-
-            // Force tensor: thole3 for isotropic, thole5 for anisotropic
             Vec3 f_ii_tensor = iScale * rInv4 * (
-                // Anisotropic terms
                 thole5 * 3.0 * (ui_dot_rhat * uj + uj_dot_rhat * ui)
                 - thole5 * 15.0 * ui_dot_rhat * uj_dot_rhat * rhat
-                // Isotropic term
                 + thole3 * 3.0 * ui_dot_uj * rhat
             );
-
-            // Damping derivative contribution
             Vec3 f_ii_damp = -iScale * rInv3 * (
                 dthole3 * ui_dot_uj
                 - 3.0 * dthole5 * ui_dot_rhat * uj_dot_rhat
@@ -377,8 +354,7 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
         }
     }
 
-    // Calculate torques as τ = μ × E
-    // These are the torques on the permanent dipoles due to the electric fields
+    // Torques: τ = μ × E
     Vec3 torqueI = mi.cross(fieldAtI);
     Vec3 torqueJ = mj.cross(fieldAtJ);
 
