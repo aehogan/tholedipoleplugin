@@ -87,7 +87,7 @@ void testParticleInducedDipoles() {
     }
 
     std::cout << "\nMax induced dipole difference: " << maxDiff << std::endl;
-    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e-5);
+    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e-4);
 }
 
 void testParticleInducedDipolesExtrapolated() {

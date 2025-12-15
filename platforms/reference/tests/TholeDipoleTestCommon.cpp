@@ -263,8 +263,8 @@ void setupAndGetForcesEnergyTholeDipoleWater(TholeDipoleForce::NonbondedMethod n
 }
 
 AmoebaMultipoleForce* createEquivalentAmoebaForce(TholeDipoleForce* tholeDipoleForce) {
-    // Load OpenMM plugins to ensure AMOEBA is available from openff_jun2025 env
-    Platform::loadPluginsFromDirectory("/home/aehogan2/miniforge3/envs/openff_jun2025/lib/plugins");
+    // Load custom AMOEBA plugin with debug output
+    Platform::loadPluginsFromDirectory("/home/aehogan2/PycharmProjects/tholedipoleplugin/amoeba_reference/build/plugins");
     
     cout << "Creating AMOEBA force..." << endl;
     AmoebaMultipoleForce* amoebaForce = new AmoebaMultipoleForce();
@@ -340,12 +340,13 @@ AmoebaMultipoleForce* createEquivalentAmoebaForce(TholeDipoleForce* tholeDipoleF
             }
         }
         
-        // Add to AMOEBA force with dampingFactor = 0
-        cout << "Adding particle " << i << " to AMOEBA: axisType=" << amoebaAxisType 
+        // Add to AMOEBA force with dampingFactor = polarizability^(1/6)
+        double dampingFactor = (polarizability > 0) ? pow(polarizability, 1.0/6.0) : 0.0;
+        cout << "Adding particle " << i << " to AMOEBA: axisType=" << amoebaAxisType
              << " atomZ=" << amoebaAtomZ << " atomX=" << amoebaAtomX << " atomY=" << amoebaAtomY << endl;
         amoebaForce->addMultipole(charge, dipole, quadrupole,
                                   amoebaAxisType, amoebaAtomZ, amoebaAtomX, amoebaAtomY,
-                                  thole, 0.0, polarizability);
+                                  thole, dampingFactor, polarizability);
         cout << "Particle " << i << " added successfully" << endl;
     }
     

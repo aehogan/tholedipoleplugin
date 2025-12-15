@@ -37,6 +37,7 @@ SET(INDIVIDUAL_TESTS
     PMEFunctionComparison
     CustomPointCharges
     TwoDipoles
+    TwoChargesPME
 )
 
 FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})

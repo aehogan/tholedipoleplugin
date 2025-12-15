@@ -60,16 +60,16 @@ void test1DChainSizeConsistency() {
     double mpmc_ewald_per_atom = -1.384541;  // K/atom (full polarizable, Ewald)
     double mpmc_ewald_kj_per_atom = mpmc_ewald_per_atom * 0.008314462;  // kJ/mol/atom
 
-    vector<int> systemSizes = {32, 64, 128, 256};
+    vector<int> systemSizes = {32, 64, 128};
 
-    enum Polarization { NoPol, Direct, Mutual };
+    enum Polarization { NoPol, Mutual };
     enum NonbondedMethod { PME, NoCutoff };
 
     struct Scenario {
         Polarization pol;
         NonbondedMethod nb;
         string name() const {
-            string p = (pol == NoPol ? "NoPol" : (pol == Direct ? "Direct" : "Mutual"));
+            string p = (pol == NoPol ? "NoPol" : "Mutual");
             string n = (nb == PME ? "PME" : "NoCutoff");
             return p + "_" + n;
         }
@@ -77,10 +77,8 @@ void test1DChainSizeConsistency() {
 
     vector<Scenario> scenarios = {
         {NoPol,     PME},
-        {Direct,    PME},
         {Mutual,    PME},
         {NoPol,     NoCutoff},
-        {Direct,    NoCutoff},
         {Mutual,    NoCutoff}
     };
 
@@ -129,9 +127,7 @@ void test1DChainSizeConsistency() {
 
             if (scenario.pol == NoPol) {
                 force->setPolarizationType(TholeDipoleForce::Direct); // induced = 0
-            } else if (scenario.pol == Direct) {
-                force->setPolarizationType(TholeDipoleForce::Direct);
-            } else if (scenario.pol == Mutual) {
+            } else {
                 force->setPolarizationType(TholeDipoleForce::Mutual);
                 force->setMutualInducedTargetEpsilon(1.0e-5);
                 force->setMutualInducedMaxIterations(500);

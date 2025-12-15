@@ -137,19 +137,23 @@ double ReferenceTholeDipoleForce::calculateForceAndEnergy(const vector<Vec3>& pa
     initializeVec3Vector(torques);
     double energy = calculateElectrostatic(particleData, torques, forces);
 
-    // Add self-energy terms for polarization
-    const double scale_factor = _electric / _dielectric;
-    double polSelfEnergy = 0.0;
-    for (unsigned int i = 0; i < _numParticles; i++) {
-        if (particleData[i].polarizability > 0.0) {
-            double mu2 = _inducedDipole[i].dot(_inducedDipole[i]);
-            polSelfEnergy += 0.5 * scale_factor * mu2 / particleData[i].polarizability;
+    // Add polarization energy as -0.5 * μ·E_perm for NoCutoff only
+    // For PME, the polarization energy is handled differently in the PME calculation
+    // This is the correct form that accounts for both the interaction energy
+    // and the cost to create the induced dipole
+    double polarizationEnergy = 0.0;
+    if (_nonbondedMethod != PME) {
+        const double scale_factor = _electric / _dielectric;
+        double muDotE = 0.0;
+        for (unsigned int i = 0; i < _numParticles; i++) {
+            muDotE += _inducedDipole[i].dot(_fixedDipoleField[i]);
         }
+        polarizationEnergy = -0.5 * scale_factor * muDotE;
+        energy += polarizationEnergy;
     }
-    energy += polSelfEnergy;
 
     // Map torques to forces
-    mapTorqueToForce(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs, 
+    mapTorqueToForce(particleData, multipoleAtomXs, multipoleAtomYs, multipoleAtomZs,
                      axisTypes, torques, forces);
 
     return energy;
@@ -268,7 +272,7 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     Vec3 f_cc = mScale * qi * qk * rInv2 * rhat;
     energy += e_cc;
     forceK += f_cc;
-    
+
     // Field at I due to charge K: E = -qk * r̂ / r²  (points from K to I, which is -rhat)
     // Field at K due to charge I: E = qi * r̂ / r²   (points from I to K, which is rhat)
     fieldAtI -= mScale * qk * rInv2 * rhat;
@@ -291,7 +295,7 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     double e_dd = mScale * (mi_dot_mk - 3.0 * mi_dot_rhat * mk_dot_rhat) * rInv3;
     energy += e_dd;
     forceK += f_dd;
-    
+
     // Field at I due to dipole K: E = [3(mk·(-r̂))(-r̂) - mk] / r³ = [3(mk·r̂)r̂ - mk] / r³
     // Field at K due to dipole I: E = [3(mi·r̂)r̂ - mi] / r³
     fieldAtI += mScale * (3.0 * mk_dot_rhat * rhat - mk) * rInv3;
@@ -321,7 +325,7 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
         );
         energy += e_di;
         forceK += f_di;
-        
+
         // Add induced dipole contributions to fields
         fieldAtI += iScale * (3.0 * uk_dot_rhat * rhat - uk) * rInv3;
         fieldAtK += iScale * (3.0 * ui_dot_rhat * rhat - ui) * rInv3;
@@ -374,26 +378,26 @@ double ReferenceTholeDipoleForce::calculateElectrostatic(
     const vector<TholeDipoleParticleData>& particleData,
     vector<Vec3>& torques,
     vector<Vec3>& forces) {
-    
+
     double energy = 0.0;
-    
+
     // Calculate pairwise interactions
     for (unsigned int i = 0; i < _numParticles; i++) {
         for (unsigned int j = i + 1; j < _numParticles; j++) {
             double mScale = 1.0;
             double iScale = 1.0;
-            
+
             // Get scaling factors if within cutoff
             if (j <= _maxScaleIndex[i]) {
                 mScale = getScaleFactor(i, j, M_SCALE);
                 iScale = getScaleFactor(i, j, I_SCALE);
             }
-            
+
             energy += calculateElectrostaticPairIxn(particleData[i], particleData[j],
                                                     mScale, iScale, forces, torques);
         }
     }
-    
+
     return energy;
 }
 
@@ -485,10 +489,10 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
     int axisType) const {
     
     // Debug output for small systems
-    if (particleI.particleIndex <= 5) {
-        printf("  Particle %d: Original dipole (%.6f, %.6f, %.6f), axisType=%d\n", 
-               particleI.particleIndex, particleI.dipole[0], particleI.dipole[1], particleI.dipole[2], axisType);
-    }
+    // if (particleI.particleIndex <= 5) {
+    //     printf("  Particle %d: Original dipole (%.6f, %.6f, %.6f), axisType=%d\n",
+    //            particleI.particleIndex, particleI.dipole[0], particleI.dipole[1], particleI.dipole[2], axisType);
+    // }
     
     // Get the z-axis vector
     Vec3 vectorZ = particleZ->position - particleI.position;
@@ -539,11 +543,11 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
     vectorY = vectorZ.cross(vectorX);
     
     // Debug output for small systems
-    if (particleI.particleIndex <= 5) {
-        printf("    vectorX: (%.6f, %.6f, %.6f)\n", vectorX[0], vectorX[1], vectorX[2]);
-        printf("    vectorY: (%.6f, %.6f, %.6f)\n", vectorY[0], vectorY[1], vectorY[2]);
-        printf("    vectorZ: (%.6f, %.6f, %.6f)\n", vectorZ[0], vectorZ[1], vectorZ[2]);
-    }
+    // if (particleI.particleIndex <= 5) {
+    //     printf("    vectorX: (%.6f, %.6f, %.6f)\n", vectorX[0], vectorX[1], vectorX[2]);
+    //     printf("    vectorY: (%.6f, %.6f, %.6f)\n", vectorY[0], vectorY[1], vectorY[2]);
+    //     printf("    vectorZ: (%.6f, %.6f, %.6f)\n", vectorZ[0], vectorZ[1], vectorZ[2]);
+    // }
     
     // Build rotation matrix (each row is a basis vector)
     Vec3 rotationMatrix[3];
@@ -561,9 +565,9 @@ void ReferenceTholeDipoleForce::applyRotationMatrixToParticle(
     }
 
     // More debug output for small systems
-    if (particleI.particleIndex <= 5) {
-        printf("  Final transformed dipole: (%.6f, %.6f, %.6f)\n", labDipole[0], labDipole[1], labDipole[2]);
-    }
+    // if (particleI.particleIndex <= 5) {
+    //     printf("  Final transformed dipole: (%.6f, %.6f, %.6f)\n", labDipole[0], labDipole[1], labDipole[2]);
+    // }
 
     particleI.dipole = labDipole;
 }

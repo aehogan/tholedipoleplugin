@@ -493,12 +493,12 @@ protected:
      * 
      * @param particleI       particle I data
      * @param particleJ       particle J data
-     * @param dScale          d-scale factor for this interaction
-     * @param pScale          p-scale factor for this interaction  
+     * @param mScale          m-scale factor for this interaction
+     * @param iScale          i-scale factor for this interaction
      */
-    virtual void calculateFixedDipoleFieldPairIxn(const TholeDipoleParticleData& particleI, 
+    virtual void calculateFixedDipoleFieldPairIxn(const TholeDipoleParticleData& particleI,
                                                    const TholeDipoleParticleData& particleJ,
-                                                   double dScale, double pScale);
+                                                   double mScale, double iScale);
 
     /**
      * Converge induced dipoles using DIIS for mutual polarization.
@@ -632,82 +632,6 @@ protected:
                                      std::vector<Vec3>& forces) const;
 
     double calculateElectrostaticPotentialForParticleGridPoint(const TholeDipoleParticleData& particleI, const Vec3& gridPoint) const;
-};
-
-/**
- * This class implements PME for the Thole dipole force.
- */
-class ReferencePmeTholeDipoleForce : public ReferenceTholeDipoleForce {
-public:
-    /**
-     * Constructor
-     */
-    ReferencePmeTholeDipoleForce();
-
-    /**
-     * Destructor
-     */
-    ~ReferencePmeTholeDipoleForce();
-
-    /**
-     * Set cutoff distance.
-     *
-     * @param cutoffDistance cutoff distance
-     */
-    void setCutoffDistance(double cutoffDistance);
-
-    /**
-     * Get cutoff distance.
-     *
-     * @return cutoff distance
-     */
-    double getCutoffDistance() const;
-
-    /**
-     * Set alpha parameter for Ewald.
-     *
-     * @param alphaEwald alpha parameter for Ewald
-     */
-    void setAlphaEwald(double alphaEwald);
-
-    /**
-     * Get alpha parameter for Ewald.
-     *
-     * @return alpha parameter for Ewald
-     */
-    double getAlphaEwald() const;
-
-    /**
-     * Set PME grid dimensions.
-     *
-     * @param pmeGridDimensions PME grid dimensions
-     */
-    void setPmeGridDimensions(const std::vector<int>& pmeGridDimensions);
-
-    /**
-     * Get PME grid dimensions.
-     *
-     * @param pmeGridDimensions PME grid dimensions
-     */
-    void getPmeGridDimensions(std::vector<int>& pmeGridDimensions) const;
-
-    /**
-     * Set periodic box size.
-     *
-     * @param boxVectors box vectors
-     */
-    void setPeriodicBoxSize(Vec3* boxVectors);
-
-protected:
-    double _cutoffDistance;
-    double _alphaEwald;
-    std::vector<int> _pmeGridDimensions;
-    Vec3 _periodicBoxVectors[3];
-
-    /**
-     * Apply periodic boundary conditions to difference in positions
-     */
-    void getPeriodicDelta(Vec3& deltaR) const override;
 };
 
 } // namespace TholeDipolePlugin

@@ -129,7 +129,7 @@ void ReferencePMETholeDipoleForce::resizePmeArrays()
     _particleFraction.resize(_numParticles);
 
     _phi.resize(10*_numParticles);
-    _phid.resize(4*_numParticles);
+    _phid.resize(10*_numParticles);  // potential, 3 first derivs, 6 second derivs
 }
 
 void ReferencePMETholeDipoleForce::initializePmeGrid()
@@ -215,12 +215,12 @@ void ReferencePMETholeDipoleForce::initializeBSplineModuli()
             _pmeBsplineModuli[dim][ndata-1] = 0.5 * _pmeBsplineModuli[dim][ndata-2];
         }
 
-        if (!printed && dim == 0) {
-            std::cout << "B-spline moduli (first 10 values):" << std::endl;
-            for (int i = 0; i < min(10, ndata); i++) {
-                std::cout << "  bmod[" << i << "] = " << _pmeBsplineModuli[dim][i] << std::endl;
-            }
-        }
+        // if (!printed && dim == 0) {
+        //     std::cout << "B-spline moduli (first 10 values):" << std::endl;
+        //     for (int i = 0; i < min(10, ndata); i++) {
+        //         std::cout << "  bmod[" << i << "] = " << _pmeBsplineModuli[dim][i] << std::endl;
+        //     }
+        // }
 
         // Compute and apply the optimal zeta coefficient
         int jcut = 50;
@@ -250,12 +250,12 @@ void ReferencePMETholeDipoleForce::initializeBSplineModuli()
             _pmeBsplineModuli[dim][i-1] = _pmeBsplineModuli[dim][i-1]*(zeta*zeta);
         }
 
-        if (!printed && dim == 0) {
-            std::cout << "B-spline moduli after zeta (first 10 values):" << std::endl;
-            for (int i = 0; i < min(10, ndata); i++) {
-                std::cout << "  bmod[" << i << "] = " << _pmeBsplineModuli[dim][i] << std::endl;
-            }
-        }
+        // if (!printed && dim == 0) {
+        //     std::cout << "B-spline moduli after zeta (first 10 values):" << std::endl;
+        //     for (int i = 0; i < min(10, ndata); i++) {
+        //         std::cout << "  bmod[" << i << "] = " << _pmeBsplineModuli[dim][i] << std::endl;
+        //     }
+        // }
     }
     printed = true;
 }
@@ -264,9 +264,6 @@ double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDi
                                                             vector<Vec3>& torques, vector<Vec3>& forces)
 {
     double energy = 0.0;
-
-    // Save forces before direct space
-    vector<Vec3> forcesBeforeDirect(forces);
 
     double directEnergy = 0.0;
     for (unsigned int i = 0; i < _numParticles; i++) {
@@ -284,45 +281,24 @@ double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDi
         }
     }
 
-    // Save forces after direct space (before reciprocal)
-    vector<Vec3> forcesAfterDirect(forces);
-
     calculatePmeSelfTorque(particleData, torques);
     double recipEnergy = computeReciprocalSpaceFixedMultipoleForceAndEnergy(particleData, forces, torques);
     double selfEnergy = calculatePmeSelfEnergy(particleData);
 
-    Vec3 a[3];
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            a[j][i] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
+    // Compute induced dipole potential on grid for reciprocal force calculation
+    initializePmeGrid();
+    spreadInducedDipolesOnGrid(_inducedDipole);
+    vector<size_t> shape = {(size_t) _pmeGridDimensions[0], (size_t) _pmeGridDimensions[1], (size_t) _pmeGridDimensions[2]};
+    vector<size_t> axes = {0, 1, 2};
+    vector<ptrdiff_t> stride = {(ptrdiff_t) (_pmeGridDimensions[1]*_pmeGridDimensions[2]*sizeof(std::complex<double>)),
+                                (ptrdiff_t) (_pmeGridDimensions[2]*sizeof(std::complex<double>)),
+                                (ptrdiff_t) sizeof(std::complex<double>)};
+    pocketfft::c2c(shape, stride, stride, axes, true, _pmeGrid, _pmeGrid, 1.0, 0);
+    performPmeReciprocalConvolution();
+    pocketfft::c2c(shape, stride, stride, axes, false, _pmeGrid, _pmeGrid, 1.0, 0);
+    computeInducedPotentialFromGrid();
 
-    double inducedRecipEnergy = 0.0;
-    for (int i = 0; i < _numParticles; i++) {
-        Vec3 u_frac;
-        for (int j = 0; j < 3; j++)
-            for (int k = 0; k < 3; k++)
-                u_frac[j] += a[j][k] * _inducedDipole[i][k];
-
-        inducedRecipEnergy += u_frac[0] * _phi[10*i+1] + u_frac[1] * _phi[10*i+2] + u_frac[2] * _phi[10*i+3];
-    }
-    inducedRecipEnergy *= -1.0 * _electric;
-
-    if (_numParticles == 2 || _numParticles == 8) {
-        std::cout << "PME Energy Components:" << std::endl;
-        std::cout << "  Direct Energy:         " << directEnergy << " kJ/mol" << std::endl;
-        std::cout << "  Reciprocal Energy:     " << recipEnergy << " kJ/mol" << std::endl;
-        std::cout << "  Induced Recip Energy:  " << inducedRecipEnergy << " kJ/mol" << std::endl;
-        std::cout << "  Self Energy:           " << selfEnergy << " kJ/mol" << std::endl;
-        std::cout << "  Total Energy:          " << (directEnergy + recipEnergy + inducedRecipEnergy + selfEnergy) << " kJ/mol" << std::endl;
-
-        std::cout << "\nForce breakdown for particle 0:" << std::endl;
-        Vec3 directForce = forcesAfterDirect[0] - forcesBeforeDirect[0];
-        Vec3 recipForce = forces[0] - forcesAfterDirect[0];
-        std::cout << "  Direct force: " << directForce << std::endl;
-        std::cout << "  Recip force:  " << recipForce << std::endl;
-        std::cout << "  Total force (before torque map):  " << forces[0] << std::endl;
-        std::cout << "  Torque on particle 0: " << torques[0] << std::endl;
-    }
+    double inducedRecipEnergy = computeReciprocalSpaceInducedDipoleForceAndEnergy(particleData, forces, torques);
 
     energy = directEnergy + recipEnergy + inducedRecipEnergy + selfEnergy;
     return energy;
@@ -330,6 +306,7 @@ double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDi
 
 void ReferencePMETholeDipoleForce::calculateFixedDipoleField(const vector<TholeDipoleParticleData>& particleData)
 {
+    zeroFixedDipoleFields();
     resizePmeArrays();
     computePmeBSplines(particleData);
     initializePmeGrid();
@@ -347,24 +324,14 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleField(const vector<TholeD
 
     pocketfft::c2c(shape, stride, stride, axes, false, _pmeGrid, _pmeGrid, 1.0, 0);
 
-    double totalGridMagAfterIFFT = 0.0;
-    for (int i = 0; i < _totalGridSize; i++) {
-        totalGridMagAfterIFFT += std::abs(_pmeGrid[i]);
-    }
-
-
     computeFixedPotentialFromGrid();
     recordFixedMultipoleField();
 
-    int mid = _numParticles / 2;
-    Vec3 fieldAfterRecip_mid = _fixedDipoleField[mid];
-
     double term = (4.0/3.0)*(_alphaEwald*_alphaEwald*_alphaEwald)/SQRT_PI;
     for (unsigned int jj = 0; jj < _numParticles; jj++) {
-        Vec3 selfEnergy = particleData[jj].dipole*term;
-        _fixedDipoleField[jj] += selfEnergy;
+        Vec3 selfField = particleData[jj].dipole*term;
+        _fixedDipoleField[jj] += selfField;
     }
-    Vec3 fieldAfterSelf_mid = _fixedDipoleField[mid];
 
     for (unsigned int i = 0; i < _numParticles; i++) {
         for (unsigned int j = i + 1; j < _numParticles; j++) {
@@ -378,8 +345,6 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleField(const vector<TholeD
             calculateFixedDipoleFieldPairIxn(particleData[i], particleData[j], mScale, iScale);
         }
     }
-    Vec3 fieldAfterDirect_mid = _fixedDipoleField[mid];
-
 }
 
 void ReferencePMETholeDipoleForce::calculateInducedDipoleFields(const vector<TholeDipoleParticleData>& particleData,
@@ -417,6 +382,11 @@ void ReferencePMETholeDipoleForce::calculateInducedDipoleFields(const vector<Tho
 
     computeInducedPotentialFromGrid();
     recordInducedDipoleField(inducedDipoleField);
+
+    double term = (4.0/3.0)*(_alphaEwald*_alphaEwald*_alphaEwald)/SQRT_PI;
+    for (unsigned int jj = 0; jj < _numParticles; jj++) {
+        inducedDipoleField[jj] += inducedDipoles[jj]*term;
+    }
 }
 
 void ReferencePMETholeDipoleForce::calculateFixedDipoleFieldPairIxn(const TholeDipoleParticleData& particleI,
@@ -435,6 +405,7 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleFieldPairIxn(const TholeD
 
     double r = sqrt(r2);
 
+    // Calculate erfc-damped coefficients (bn1, bn2)
     double ralpha = _alphaEwald * r;
     double bn0 = erfc(ralpha) / r;
     double alsq2 = 2.0 * _alphaEwald * _alphaEwald;
@@ -442,18 +413,64 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleFieldPairIxn(const TholeD
     double exp2a = exp(-(ralpha * ralpha));
     alsq2n *= alsq2;
     double bn1 = (bn0 + alsq2n * exp2a) / r2;
-
     alsq2n *= alsq2;
     double bn2 = (3.0 * bn1 + alsq2n * exp2a) / r2;
 
     double djr = particleJ.dipole.dot(deltaR);
     double dir = particleI.dipole.dot(deltaR);
 
+    // erfc-damped field (fim/fjm in AMOEBA notation)
     Vec3 fim = -particleJ.dipole * bn1 - deltaR * (bn1 * particleJ.charge - bn2 * djr);
     Vec3 fjm = -particleI.dipole * bn1 + deltaR * (bn1 * particleI.charge + bn2 * dir);
 
-    _fixedDipoleField[particleI.particleIndex] += fim * mScale;
-    _fixedDipoleField[particleJ.particleIndex] += fjm * mScale;
+    // Calculate Thole-damped + mScale-modified inverse distances (drr3, drr5 in AMOEBA notation)
+    // dampingFactor = polarizability^(1/6)
+    double dampI = pow(particleI.polarizability, 1.0/6.0);
+    double dampJ = pow(particleJ.polarizability, 1.0/6.0);
+    double damp = dampI * dampJ;
+
+    double scaleFactor3 = 1.0;
+    double scaleFactor5 = 1.0;
+
+    if (damp > 0.0) {
+        double ratio = r / damp;
+        ratio = ratio * ratio * ratio;
+        double pgamma = _tholeDampingParameter;  // a parameter
+        double dampExp = -pgamma * ratio;
+
+        if (dampExp > -50.0) {
+            double expdamp = exp(dampExp);
+            scaleFactor3 = 1.0 - expdamp;
+            scaleFactor5 = 1.0 - expdamp * (1.0 - dampExp);
+        }
+    }
+
+    // dampedMScale combines Thole damping with mScale
+    // When mScale=1 (non-excluded): use Thole-damped field
+    // When mScale=0 (excluded): dampedMScale=0, so drr3 = 1/r³ (full undamped)
+    double dampedMScale3 = scaleFactor3 * mScale;
+    double dampedMScale5 = scaleFactor5 * mScale;
+
+    double rInv = 1.0 / r;
+    double rInv2 = rInv * rInv;
+    double rInv3 = rInv2 * rInv;
+    double rInv5 = rInv3 * rInv2;
+
+    // drr3, drr5 are the Thole-damped and mScale-modified inverse distances
+    // Following AMOEBA: drr3 = (1 - dampedMScale3) / r³
+    double drr3 = (1.0 - dampedMScale3) * rInv3;
+    double drr5 = 3.0 * (1.0 - dampedMScale5) * rInv5;
+
+    // fid/fjd: the field that needs to be subtracted (Thole-damped exclusion correction)
+    Vec3 fid = -particleJ.dipole * drr3 - deltaR * (drr3 * particleJ.charge - drr5 * djr);
+    Vec3 fjd = -particleI.dipole * drr3 + deltaR * (drr3 * particleI.charge + drr5 * dir);
+
+    // Total field contribution = fim - fid (AMOEBA formula)
+    Vec3 field_contrib_I = fim - fid;
+    Vec3 field_contrib_J = fjm - fjd;
+
+    _fixedDipoleField[particleI.particleIndex] += field_contrib_I;
+    _fixedDipoleField[particleJ.particleIndex] += field_contrib_J;
 }
 
 void ReferencePMETholeDipoleForce::computeBSplinePoint(double* data, double* ddata,
@@ -533,19 +550,28 @@ void ReferencePMETholeDipoleForce::computeBSplinePoint(double* data, double* dda
 
 void ReferencePMETholeDipoleForce::updateGridIndexAndFraction(const vector<TholeDipoleParticleData>& particleData)
 {
+    // Match AMOEBA's grid indexing convention exactly
     for (int i = 0; i < _numParticles; i++) {
         Vec3 position = particleData[i].position;
 
         for (int d = 0; d < 3; d++) {
-            double t = position[0]*_recipBoxVectors[0][d] +
-                      position[1]*_recipBoxVectors[1][d] +
-                      position[2]*_recipBoxVectors[2][d];
+            // Compute fractional coordinate (position in [0,1] box)
+            double w = position[0]*_recipBoxVectors[0][d] +
+                       position[1]*_recipBoxVectors[1][d] +
+                       position[2]*_recipBoxVectors[2][d];
 
-            t = (t - floor(t)) * _pmeGridDimensions[d];
-            int ti = (int)t;
+            // AMOEBA centering: shift to center around 0.5
+            double fr = _pmeGridDimensions[d] * (w - (int)(w + 0.5) + 0.5);
+            int ifr = static_cast<int>(floor(fr));
 
-            _particleFraction[i][d] = t - ti;
-            _iGrid[i][d] = ti % _pmeGridDimensions[d];
+            // B-spline fractional offset
+            _particleFraction[i][d] = fr - ifr;
+
+            // AMOEBA convention: grid starting index is ifr - ORDER + 1
+            // This positions ifr at the END of the B-spline support
+            int igrid = ifr - THOLE_PME_ORDER + 1;
+            if (igrid < 0) igrid += _pmeGridDimensions[d];
+            _iGrid[i][d] = igrid;
         }
     }
 }
@@ -579,13 +605,6 @@ void ReferencePMETholeDipoleForce::transformDipolesToFractionalCoordinates(const
         for (int j = 0; j < 3; j++)
             a[j][i] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
-    if (_numParticles == 2) {
-        std::cout << "Dipole transformation matrix a:" << std::endl;
-        for (int i = 0; i < 3; i++) {
-            std::cout << "  [" << a[i][0] << ", " << a[i][1] << ", " << a[i][2] << "]" << std::endl;
-        }
-    }
-
     _transformed.resize(particleData.size());
     for (int i = 0; i < (int) particleData.size(); i++) {
         _transformed[i].charge = particleData[i].charge;
@@ -593,10 +612,6 @@ void ReferencePMETholeDipoleForce::transformDipolesToFractionalCoordinates(const
         for (int j = 0; j < 3; j++)
             for (int k = 0; k < 3; k++)
                 _transformed[i].dipole[j] += a[j][k]*particleData[i].dipole[k];
-
-        if (_numParticles == 2) {
-            std::cout << "Particle " << i << ": Cartesian dipole=" << particleData[i].dipole << ", Fractional dipole=" << _transformed[i].dipole << std::endl;
-        }
     }
 }
 
@@ -636,11 +651,6 @@ void ReferencePMETholeDipoleForce::spreadFixedMultipolesOntoGrid(const vector<Th
     for (int atomIndex = 0; atomIndex < _numParticles; atomIndex++) {
         double atomCharge = _transformed[atomIndex].charge;
         Vec3 atomDipole = _transformed[atomIndex].dipole;
-
-        if (_numParticles == 2) {
-            std::cout << "Spreading particle " << atomIndex << ": charge=" << atomCharge
-                      << ", fractional dipole=" << atomDipole << std::endl;
-        }
 
         int x0index = _iGrid[atomIndex][0];
         int y0index = _iGrid[atomIndex][1];
@@ -682,10 +692,6 @@ double ReferencePMETholeDipoleForce::performPmeReciprocalConvolution()
 	double factor = M_PI * M_PI / (_alphaEwald * _alphaEwald);
 	double volume = fabs(_computeBoxVolume());
 	double scaleFactor = 1.0 / (M_PI * volume);
-
-	if (_numParticles == 2) {
-		std::cout << "Convolution params: factor=" << factor << ", volume=" << volume << ", scaleFactor=" << scaleFactor << std::endl;
-	}
 
 	double esum = 0.0;
 
@@ -735,25 +741,6 @@ double ReferencePMETholeDipoleForce::performPmeReciprocalConvolution()
 	}
 
 	double result = 0.5 * esum;
-
-	if (_numParticles == 2) {
-		// Print some sample grid values after convolution
-		std::cout << "Grid after convolution (sample values):" << std::endl;
-		for (int i = 0; i < min(5, _totalGridSize); i++) {
-			std::cout << "  grid[" << i << "] = " << _pmeGrid[i] << std::endl;
-		}
-		// Print grid around particle 0's position
-		int x0 = _numParticles > 0 ? _iGrid[0][0] : 0;
-		int y0 = _numParticles > 0 ? _iGrid[0][1] : 0;
-		int z0 = _numParticles > 0 ? _iGrid[0][2] : 0;
-		std::cout << "  Grid near particle 0 (x0=" << x0 << "):" << std::endl;
-		for (int ix = 0; ix < 3; ix++) {
-			int x = (x0 + ix) % _pmeGridDimensions[0];
-			int idx = x * _pmeGridDimensions[1] * _pmeGridDimensions[2] + y0 * _pmeGridDimensions[2] + z0;
-			std::cout << "    grid[" << x << "," << y0 << "," << z0 << "] = " << _pmeGrid[idx] << std::endl;
-		}
-	}
-
 	return result;
 }
 
@@ -761,67 +748,24 @@ void ReferencePMETholeDipoleForce::computeFixedPotentialFromGrid()
 {
     const int order = THOLE_PME_ORDER;
 
-    // Debug: print first few non-zero grid values after IFFT
-    if (_numParticles == 2) {
-        int nonzero_count = 0;
-        std::cout << "First 10 non-zero grid values after IFFT:" << std::endl;
-        for (int i = 0; i < _totalGridSize && nonzero_count < 10; i++) {
-            if (std::abs(_pmeGrid[i]) > 1e-10) {
-                std::cout << "  grid[" << i << "] = " << _pmeGrid[i] << std::endl;
-                nonzero_count++;
-            }
-        }
-
-        // Print B-spline values for each particle
-        for (int m = 0; m < _numParticles; m++) {
-            std::cout << "Particle " << m << " B-splines:" << std::endl;
-            std::cout << "  iGrid: (" << _iGrid[m][0] << ", " << _iGrid[m][1] << ", " << _iGrid[m][2] << ")" << std::endl;
-            std::cout << "  fraction: (" << _particleFraction[m][0] << ", " << _particleFraction[m][1] << ", " << _particleFraction[m][2] << ")" << std::endl;
-            std::cout << "  X B-splines (val, d1, d2, d3):" << std::endl;
-            for (int k = 0; k < order; k++) {
-                double4 t = _thetai[0][m*order + k];
-                std::cout << "    [" << k << "]: (" << t[0] << ", " << t[1] << ", " << t[2] << ", " << t[3] << ")" << std::endl;
-            }
-        }
-    }
-
     for (int m = 0; m < _numParticles; m++) {
         int x0index = _iGrid[m][0];
         int y0index = _iGrid[m][1];
         int z0index = _iGrid[m][2];
 
-        // Verify B-spline normalization
-        if (_numParticles == 2 && m == 0) {
-            double bsum = 0.0, b1sum = 0.0, b2sum = 0.0;
-            for (int k = 0; k < order; k++) {
-                double4 tx = _thetai[0][m*order + k];
-                bsum += tx[0];
-                b1sum += tx[1];
-                b2sum += tx[2];
-            }
-            std::cout << "B-spline sums for particle " << m << ": B=" << bsum << ", B'=" << b1sum << ", B''=" << b2sum << std::endl;
-        }
-
-        // Initialize all 10 potential components
-        double tuv000 = 0.0, tuv100 = 0.0, tuv010 = 0.0, tuv001 = 0.0;  // φ and first derivatives
-        double tuv200 = 0.0, tuv020 = 0.0, tuv002 = 0.0;                // second derivatives (diagonal)
-        double tuv110 = 0.0, tuv101 = 0.0, tuv011 = 0.0;                // second derivatives (mixed)
-
-        // Debug: trace tuv200 contributions for particle
-        bool trace_tuv200 = (_numParticles == 2);
-        double tuv200_contributions[5] = {0.0, 0.0, 0.0, 0.0, 0.0};  // per ix
+        double tuv000 = 0.0, tuv100 = 0.0, tuv010 = 0.0, tuv001 = 0.0;
+        double tuv200 = 0.0, tuv020 = 0.0, tuv002 = 0.0;
+        double tuv110 = 0.0, tuv101 = 0.0, tuv011 = 0.0;
 
         for (int ix = 0; ix < order; ix++) {
             int xindex = (x0index + ix) % _pmeGridDimensions[0];
             double4 tx = _thetai[0][m*order + ix];
 
-            double tuv200_this_ix = 0.0;
-
             for (int iy = 0; iy < order; iy++) {
                 int yindex = (y0index + iy) % _pmeGridDimensions[1];
                 double4 ty = _thetai[1][m*order + iy];
 
-                double tu00 = 0.0, tu01 = 0.0, tu02 = 0.0;  // z basis: value, 1st deriv, 2nd deriv
+                double tu00 = 0.0, tu01 = 0.0, tu02 = 0.0;
 
                 for (int iz = 0; iz < order; iz++) {
                     int zindex = (z0index + iz) % _pmeGridDimensions[2];
@@ -831,53 +775,34 @@ void ReferencePMETholeDipoleForce::computeFixedPotentialFromGrid()
                     double gridvalue = _pmeGrid[index].real();
                     double4 tz = _thetai[2][m*order + iz];
 
-                    tu00 += gridvalue * tz[0];  // B_z value
-                    tu01 += gridvalue * tz[1];  // B_z first derivative
-                    tu02 += gridvalue * tz[2];  // B_z second derivative
+                    tu00 += gridvalue * tz[0];
+                    tu01 += gridvalue * tz[1];
+                    tu02 += gridvalue * tz[2];
                 }
 
-                // Potential: B_x * B_y * B_z
                 tuv000 += tx[0] * ty[0] * tu00;
-
-                tuv100 += tx[1] * ty[0] * tu00;  // ∂φ/∂x
-                tuv010 += tx[0] * ty[1] * tu00;  // ∂φ/∂y
-                tuv001 += tx[0] * ty[0] * tu01;  // ∂φ/∂z
-
-                double contrib = tx[2] * ty[0] * tu00;
-                tuv200 += contrib;  // ∂²φ/∂x²
-                tuv200_this_ix += contrib;
-
-                tuv020 += tx[0] * ty[2] * tu00;  // ∂²φ/∂y²
-                tuv002 += tx[0] * ty[0] * tu02;  // ∂²φ/∂z²
-
-                tuv110 += tx[1] * ty[1] * tu00;  // ∂²φ/∂x∂y
-                tuv101 += tx[1] * ty[0] * tu01;  // ∂²φ/∂x∂z
-                tuv011 += tx[0] * ty[1] * tu01;  // ∂²φ/∂y∂z
+                tuv100 += tx[1] * ty[0] * tu00;
+                tuv010 += tx[0] * ty[1] * tu00;
+                tuv001 += tx[0] * ty[0] * tu01;
+                tuv200 += tx[2] * ty[0] * tu00;
+                tuv020 += tx[0] * ty[2] * tu00;
+                tuv002 += tx[0] * ty[0] * tu02;
+                tuv110 += tx[1] * ty[1] * tu00;
+                tuv101 += tx[1] * ty[0] * tu01;
+                tuv011 += tx[0] * ty[1] * tu01;
             }
-            tuv200_contributions[ix] = tuv200_this_ix;
         }
 
-        if (trace_tuv200) {
-            std::cout << "Particle " << m << " tuv200 breakdown:" << std::endl;
-            std::cout << "  x0index=" << x0index << std::endl;
-            for (int ix = 0; ix < order; ix++) {
-                double4 tx = _thetai[0][m*order + ix];
-                std::cout << "  ix=" << ix << ": tx[2]=" << tx[2] << ", contrib=" << tuv200_contributions[ix] << std::endl;
-            }
-            std::cout << "  Total tuv200=" << tuv200 << std::endl;
-        }
-        
-        // Store in the _phi array with proper indexing
-        _phi[10*m + 0] = tuv000;  // potential
-        _phi[10*m + 1] = tuv100;  // ∂φ/∂x
-        _phi[10*m + 2] = tuv010;  // ∂φ/∂y
-        _phi[10*m + 3] = tuv001;  // ∂φ/∂z
-        _phi[10*m + 4] = tuv200;  // ∂²φ/∂x²
-        _phi[10*m + 5] = tuv020;  // ∂²φ/∂y²
-        _phi[10*m + 6] = tuv002;  // ∂²φ/∂z²
-        _phi[10*m + 7] = tuv110;  // ∂²φ/∂x∂y
-        _phi[10*m + 8] = tuv101;  // ∂²φ/∂x∂z
-        _phi[10*m + 9] = tuv011;  // ∂²φ/∂y∂z
+        _phi[10*m + 0] = tuv000;
+        _phi[10*m + 1] = tuv100;
+        _phi[10*m + 2] = tuv010;
+        _phi[10*m + 3] = tuv001;
+        _phi[10*m + 4] = tuv200;
+        _phi[10*m + 5] = tuv020;
+        _phi[10*m + 6] = tuv002;
+        _phi[10*m + 7] = tuv110;
+        _phi[10*m + 8] = tuv101;
+        _phi[10*m + 9] = tuv011;
     }
 }
 
@@ -889,6 +814,12 @@ void ReferencePMETholeDipoleForce::computeInducedPotentialFromGrid()
         double tuv100 = 0.0;
         double tuv010 = 0.0;
         double tuv001 = 0.0;
+        double tuv200 = 0.0;
+        double tuv020 = 0.0;
+        double tuv002 = 0.0;
+        double tuv110 = 0.0;
+        double tuv101 = 0.0;
+        double tuv011 = 0.0;
 
         for (int iz = 0; iz < THOLE_PME_ORDER; iz++) {
             int k = gridPoint[2]+iz-(gridPoint[2]+iz >= _pmeGridDimensions[2] ? _pmeGridDimensions[2] : 0);
@@ -896,12 +827,16 @@ void ReferencePMETholeDipoleForce::computeInducedPotentialFromGrid()
             double tu00 = 0.0;
             double tu10 = 0.0;
             double tu01 = 0.0;
+            double tu20 = 0.0;
+            double tu11 = 0.0;
+            double tu02 = 0.0;
 
             for (int iy = 0; iy < THOLE_PME_ORDER; iy++) {
                 int j = gridPoint[1]+iy-(gridPoint[1]+iy >= _pmeGridDimensions[1] ? _pmeGridDimensions[1] : 0);
                 double4 u = _thetai[1][m*THOLE_PME_ORDER+iy];
                 double t0 = 0.0;
                 double t1 = 0.0;
+                double t2 = 0.0;
 
                 for (int ix = 0; ix < THOLE_PME_ORDER; ix++) {
                     int i = gridPoint[0]+ix-(gridPoint[0]+ix >= _pmeGridDimensions[0] ? _pmeGridDimensions[0] : 0);
@@ -910,22 +845,39 @@ void ReferencePMETholeDipoleForce::computeInducedPotentialFromGrid()
                     double4 tadd = _thetai[0][m*THOLE_PME_ORDER+ix];
                     t0 += tq*tadd[0];
                     t1 += tq*tadd[1];
+                    t2 += tq*tadd[2];
                 }
                 tu00 += t0*u[0];
                 tu10 += t1*u[0];
                 tu01 += t0*u[1];
+                tu20 += t2*u[0];
+                tu11 += t1*u[1];
+                tu02 += t0*u[2];
             }
             tuv000 += tu00*v[0];
             tuv100 += tu10*v[0];
             tuv010 += tu01*v[0];
             tuv001 += tu00*v[1];
+            tuv200 += tu20*v[0];
+            tuv020 += tu02*v[0];
+            tuv002 += tu00*v[2];
+            tuv110 += tu11*v[0];
+            tuv101 += tu10*v[1];
+            tuv011 += tu01*v[1];
         }
 
-        // Store potential (4 components: potential + 3 field components)
-        _phid[4*m] = tuv000;
-        _phid[4*m+1] = tuv100;
-        _phid[4*m+2] = tuv010;
-        _phid[4*m+3] = tuv001;
+        // Store potential and derivatives (10 components)
+        // Layout: [phi, dphi/dx, dphi/dy, dphi/dz, d2phi/dx2, d2phi/dy2, d2phi/dz2, d2phi/dxdy, d2phi/dxdz, d2phi/dydz]
+        _phid[10*m]   = tuv000;
+        _phid[10*m+1] = tuv100;
+        _phid[10*m+2] = tuv010;
+        _phid[10*m+3] = tuv001;
+        _phid[10*m+4] = tuv200;
+        _phid[10*m+5] = tuv020;
+        _phid[10*m+6] = tuv002;
+        _phid[10*m+7] = tuv110;
+        _phid[10*m+8] = tuv101;
+        _phid[10*m+9] = tuv011;
     }
 }
 
@@ -944,13 +896,6 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceFixedMultipoleForceAn
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
             fracToCart[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
-
-    if (_numParticles == 2) {
-        std::cout << "fracToCart matrix:" << std::endl;
-        for (int i = 0; i < 3; i++) {
-            std::cout << "  [" << fracToCart[i][0] << ", " << fracToCart[i][1] << ", " << fracToCart[i][2] << "]" << std::endl;
-        }
-    }
 
     double energy = 0.0;
     for (int i = 0; i < _numParticles; i++) {
@@ -971,36 +916,123 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceFixedMultipoleForceAn
 
         Vec3 f = Vec3(0.0, 0.0, 0.0);
         double particleEnergy = 0.0;
-        double chargeContribution = multipole[0]*_phi[10*i];
-        double dipoleContribution = multipole[1]*_phi[10*i+1] + multipole[2]*_phi[10*i+2] + multipole[3]*_phi[10*i+3];
         for (int k = 0; k < 4; k++) {
             particleEnergy += multipole[k]*_phi[10*i+k];
-            f[0]   += multipole[k]*_phi[10*i+deriv1[k]];
-            f[1]   += multipole[k]*_phi[10*i+deriv2[k]];
-            f[2]   += multipole[k]*_phi[10*i+deriv3[k]];
+            f[0] += multipole[k]*_phi[10*i+deriv1[k]];
+            f[1] += multipole[k]*_phi[10*i+deriv2[k]];
+            f[2] += multipole[k]*_phi[10*i+deriv3[k]];
         }
         energy += particleEnergy;
-        if (_numParticles == 2) {
-            std::cout << "Particle " << i << " recip energy components:" << std::endl;
-            std::cout << "  multipole: [" << multipole[0] << ", " << multipole[1] << ", " << multipole[2] << ", " << multipole[3] << "]" << std::endl;
-            std::cout << "  _phi: [" << _phi[10*i] << ", " << _phi[10*i+1] << ", " << _phi[10*i+2] << ", " << _phi[10*i+3] << "]" << std::endl;
-            std::cout << "  _phi (2nd derivs): [" << _phi[10*i+4] << ", " << _phi[10*i+5] << ", " << _phi[10*i+6] << ", " << _phi[10*i+7] << ", " << _phi[10*i+8] << ", " << _phi[10*i+9] << "]" << std::endl;
-            std::cout << "  chargeContribution (raw): " << chargeContribution << std::endl;
-            std::cout << "  dipoleContribution (raw): " << dipoleContribution << std::endl;
-            std::cout << "  particleEnergy (raw): " << particleEnergy << std::endl;
-            std::cout << "  f (fractional before scaling): [" << f[0]/_electric << ", " << f[1]/_electric << ", " << f[2]/_electric << "]" << std::endl;
-        }
-        f *= (_electric);
+        f *= _electric;
         Vec3 recipForce = Vec3(f[0]*fracToCart[0][0] + f[1]*fracToCart[0][1] + f[2]*fracToCart[0][2],
                                f[0]*fracToCart[1][0] + f[1]*fracToCart[1][1] + f[2]*fracToCart[1][2],
                                f[0]*fracToCart[2][0] + f[1]*fracToCart[2][1] + f[2]*fracToCart[2][2]);
-        if (_numParticles == 2) {
-            std::cout << "  recipForce (Cartesian): " << recipForce << std::endl;
-        }
         forces[i] -= recipForce;
     }
 
     return 0.5 * _electric * energy;
+}
+
+double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAndEnergy(
+    const vector<TholeDipoleParticleData>& particleData,
+    vector<Vec3>& forces, vector<Vec3>& torques) const
+{
+    // Derivative index mappings for charge + dipole (indices 0-3)
+    // deriv1[k] gives the index for d/dx of component k
+    // deriv2[k] gives the index for d/dy of component k
+    // deriv3[k] gives the index for d/dz of component k
+    // For charge (k=0): derivatives are indices 1,2,3 (first derivatives)
+    // For dipole_x (k=1): derivatives are indices 4,7,8 (second derivatives involving x)
+    // For dipole_y (k=2): derivatives are indices 7,5,9
+    // For dipole_z (k=3): derivatives are indices 8,9,6
+    const int deriv1[] = {1, 4, 7, 8};
+    const int deriv2[] = {2, 7, 5, 9};
+    const int deriv3[] = {3, 8, 9, 6};
+
+    // Transform induced potential from fractional to Cartesian coordinates
+    vector<double> cphid(10*_numParticles);
+    transformPotentialToCartesianCoordinates(_phid, cphid);
+
+    Vec3 cartToFrac[3], fracToCart[3];
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+            cartToFrac[j][i] = fracToCart[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
+
+    double energy = 0.0;
+    for (int i = 0; i < _numParticles; i++) {
+        // Transform induced dipole to fractional coordinates
+        Vec3 inducedDipole;
+        inducedDipole[0] = _inducedDipole[i][0]*cartToFrac[0][0] + _inducedDipole[i][1]*cartToFrac[0][1] + _inducedDipole[i][2]*cartToFrac[0][2];
+        inducedDipole[1] = _inducedDipole[i][0]*cartToFrac[1][0] + _inducedDipole[i][1]*cartToFrac[1][1] + _inducedDipole[i][2]*cartToFrac[1][2];
+        inducedDipole[2] = _inducedDipole[i][0]*cartToFrac[2][0] + _inducedDipole[i][1]*cartToFrac[2][1] + _inducedDipole[i][2]*cartToFrac[2][2];
+
+        // Energy: induced dipole dotted with field from permanent multipoles
+        // _phi contains the potential from permanent multipoles
+        energy += inducedDipole[0]*_phi[10*i+1] + inducedDipole[1]*_phi[10*i+2] + inducedDipole[2]*_phi[10*i+3];
+
+        // Compute torque on permanent dipoles from induced potential field
+        const double* phi = &cphid[10*i];
+        torques[i][0] += 0.5*_electric*(particleData[i].dipole[2]*phi[2] - particleData[i].dipole[1]*phi[3]);
+        torques[i][1] += 0.5*_electric*(particleData[i].dipole[0]*phi[3] - particleData[i].dipole[2]*phi[1]);
+        torques[i][2] += 0.5*_electric*(particleData[i].dipole[1]*phi[1] - particleData[i].dipole[0]*phi[2]);
+
+        // Get permanent multipole in fractional coordinates
+        double multipole[4];
+        multipole[0] = particleData[i].charge;
+        multipole[1] = _transformed[i].dipole[0];
+        multipole[2] = _transformed[i].dipole[1];
+        multipole[3] = _transformed[i].dipole[2];
+
+        // Compute force
+        // AMOEBA uses (d+p) for the induced dipole in force calculations, then scales by 0.5.
+        // Since TholeDipole has d=p (single induced dipole), we use 2*d to match.
+        // The 0.5 factor at the end gives: 0.5 * (2*d*dphi + multipole*2*dphid) = d*dphi + multipole*dphid
+        Vec3 f(0.0, 0.0, 0.0);
+
+        // Force on induced dipole from field gradient of permanent multipoles (_phi)
+        // Uses 2*inducedDipole to match AMOEBA's (d+p) convention
+        Vec3 f_ind(0.0, 0.0, 0.0);
+        for (int k = 0; k < 3; k++) {
+            int j1 = deriv1[k+1];
+            int j2 = deriv2[k+1];
+            int j3 = deriv3[k+1];
+            f_ind[0] += 2.0*inducedDipole[k]*_phi[10*i+j1];
+            f_ind[1] += 2.0*inducedDipole[k]*_phi[10*i+j2];
+            f_ind[2] += 2.0*inducedDipole[k]*_phi[10*i+j3];
+        }
+
+        // For mutual polarization, add the induced-induced reciprocal space force
+        // This is the force on induced dipoles from the gradient of the induced potential
+        // Uses 2*inducedDipole to match AMOEBA's (d*phip + p*phid) = 2*d*phid when d=p
+        if (_polarizationType == Mutual) {
+            for (int k = 0; k < 3; k++) {
+                int j1 = deriv1[k+1];
+                int j2 = deriv2[k+1];
+                int j3 = deriv3[k+1];
+                f_ind[0] += 2.0*inducedDipole[k]*_phid[10*i+j1];
+                f_ind[1] += 2.0*inducedDipole[k]*_phid[10*i+j2];
+                f_ind[2] += 2.0*inducedDipole[k]*_phid[10*i+j3];
+            }
+        }
+        f += f_ind;
+
+        // Force on permanent multipoles from induced potential (_phid)
+        // Uses 2*_phid to match AMOEBA's _phidp = 2*_phid when d=p
+        Vec3 f_perm(0.0, 0.0, 0.0);
+        for (int k = 0; k < 4; k++) {
+            f_perm[0] += multipole[k]*2.0*_phid[10*i+deriv1[k]];
+            f_perm[1] += multipole[k]*2.0*_phid[10*i+deriv2[k]];
+            f_perm[2] += multipole[k]*2.0*_phid[10*i+deriv3[k]];
+        }
+        f += f_perm;
+
+        f *= (0.5*_electric);
+        forces[i] -= Vec3(f[0]*fracToCart[0][0] + f[1]*fracToCart[0][1] + f[2]*fracToCart[0][2],
+                          f[0]*fracToCart[1][0] + f[1]*fracToCart[1][1] + f[2]*fracToCart[1][2],
+                          f[0]*fracToCart[2][0] + f[1]*fracToCart[2][1] + f[2]*fracToCart[2][2]);
+    }
+
+    return 0.5*_electric*energy;
 }
 
 void ReferencePMETholeDipoleForce::recordFixedMultipoleField()
@@ -1011,10 +1043,9 @@ void ReferencePMETholeDipoleForce::recordFixedMultipoleField()
             fracToCart[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
     for (int i = 0; i < _numParticles; i++) {
-        double fieldScale = 1.0 / _electric;
-        _fixedDipoleField[i][0] = fieldScale * (-(_phi[10*i+1]*fracToCart[0][0] + _phi[10*i+2]*fracToCart[0][1] + _phi[10*i+3]*fracToCart[0][2]));
-        _fixedDipoleField[i][1] = fieldScale * (-(_phi[10*i+1]*fracToCart[1][0] + _phi[10*i+2]*fracToCart[1][1] + _phi[10*i+3]*fracToCart[1][2]));
-        _fixedDipoleField[i][2] = fieldScale * (-(_phi[10*i+1]*fracToCart[2][0] + _phi[10*i+2]*fracToCart[2][1] + _phi[10*i+3]*fracToCart[2][2]));
+        _fixedDipoleField[i][0] = -(_phi[10*i+1]*fracToCart[0][0] + _phi[10*i+2]*fracToCart[0][1] + _phi[10*i+3]*fracToCart[0][2]);
+        _fixedDipoleField[i][1] = -(_phi[10*i+1]*fracToCart[1][0] + _phi[10*i+2]*fracToCart[1][1] + _phi[10*i+3]*fracToCart[1][2]);
+        _fixedDipoleField[i][2] = -(_phi[10*i+1]*fracToCart[2][0] + _phi[10*i+2]*fracToCart[2][1] + _phi[10*i+3]*fracToCart[2][2]);
     }
 }
 
@@ -1158,13 +1189,9 @@ void ReferencePMETholeDipoleForce::recordInducedDipoleField(vector<Vec3>& field)
             fracToCart[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
     for (int i = 0; i < _numParticles; i++) {
-        double fieldScale = 1.0 / _electric;
-        Vec3 recipField;
-        recipField[0] = fieldScale * (-(_phid[4*i+1]*fracToCart[0][0] + _phid[4*i+2]*fracToCart[0][1] + _phid[4*i+3]*fracToCart[0][2]));
-        recipField[1] = fieldScale * (-(_phid[4*i+1]*fracToCart[1][0] + _phid[4*i+2]*fracToCart[1][1] + _phid[4*i+3]*fracToCart[1][2]));
-        recipField[2] = fieldScale * (-(_phid[4*i+1]*fracToCart[2][0] + _phid[4*i+2]*fracToCart[2][1] + _phid[4*i+3]*fracToCart[2][2]));
-
-        field[i] += recipField;
+        field[i][0] -= (_phid[10*i+1]*fracToCart[0][0] + _phid[10*i+2]*fracToCart[0][1] + _phid[10*i+3]*fracToCart[0][2]);
+        field[i][1] -= (_phid[10*i+1]*fracToCart[1][0] + _phid[10*i+2]*fracToCart[1][1] + _phid[10*i+3]*fracToCart[1][2]);
+        field[i][2] -= (_phid[10*i+1]*fracToCart[2][0] + _phid[10*i+2]*fracToCart[2][1] + _phid[10*i+3]*fracToCart[2][2]);
     }
 }
 
@@ -1183,7 +1210,10 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
 
         dii_perm += particleI.dipole.dot(particleI.dipole);
 
-        dii_ind += _inducedDipole[ii].dot(_inducedDipole[ii])*0.5;
+        // Note: induced-induced self-energy is NOT included here - it's handled
+        // implicitly through the variational formulation where the polarization cost
+        // (0.5*μ²/α) cancels with part of the field interaction
+        // dii_ind += _inducedDipole[ii].dot(_inducedDipole[ii]);
     }
 
     double prefac = -_alphaEwald * _electric / (_dielectric*SQRT_PI);
@@ -1197,20 +1227,6 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
     double volume = _computeBoxVolume();
     double plasmaTerm = totalCharge*totalCharge*M_PI*_electric/(2.0*_dielectric*volume*_alphaEwald*_alphaEwald);
     energy -= plasmaTerm;
-
-    if (_numParticles == 2) {
-        std::cout << "Self Energy Breakdown:" << std::endl;
-        std::cout << "  cii (charge^2): " << cii << std::endl;
-        std::cout << "  dii_perm (dipole·dipole): " << dii_perm << std::endl;
-        std::cout << "  dii_ind (induced·induced * 0.5): " << dii_ind << std::endl;
-        std::cout << "  totalCharge: " << totalCharge << std::endl;
-        std::cout << "  prefac: " << prefac << std::endl;
-        std::cout << "  chargeTerm: " << chargeTerm << " kJ/mol" << std::endl;
-        std::cout << "  dipoleTerm: " << dipoleTerm << " kJ/mol" << std::endl;
-        std::cout << "  plasmaTerm: " << plasmaTerm << " kJ/mol" << std::endl;
-        std::cout << "  energy before plasma: " << (chargeTerm + dipoleTerm) << " kJ/mol" << std::endl;
-        std::cout << "  energy after plasma: " << energy << " kJ/mol" << std::endl;
-    }
 
     return energy;
 }
@@ -1268,8 +1284,11 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     double qIdJr = particleI.charge * dJr;
     double qJdIr = particleJ.charge * dIr;
 
-    // erfc-damped energy (short-range, computed in direct space)
-    double erfcEnergy = bn0 * qIqJ + bn1 * (qJdIr - qIdJr) + bn1 * dIdJ - bn2 * dIr * dJr;
+    // erfc-damped energy components (short-range, computed in direct space)
+    double erfcCC = bn0 * qIqJ;
+    double erfcCD = bn1 * (qJdIr - qIdJr);
+    double erfcDD = bn1 * dIdJ - bn2 * dIr * dJr;
+    double erfcEnergy = erfcCC + erfcCD + erfcDD;
 
     // For excluded pairs (mScale < 1), we need to subtract the erf (reciprocal) contribution
     // that was incorrectly included in reciprocal space.
@@ -1278,35 +1297,23 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     double rInv = 1.0 / r;
     double rInv2 = rInv * rInv;
     double rInv3 = rInv2 * rInv;
-    // Full Coulomb energy: charge-charge (1/r), charge-dipole (1/r³), dipole-dipole (1/r³ and 3/r⁵)
-    double fullEnergy = rInv * qIqJ + rInv3 * (qJdIr - qIdJr) + rInv3 * dIdJ - 3.0 * rInv3 * rInv2 * dIr * dJr;
+    double rInv4 = rInv2 * rInv2;
+    double rInv5 = rInv3 * rInv2;
+    // Full Coulomb energy components
+    double fullCC = rInv * qIqJ;
+    double fullCD = rInv3 * (qJdIr - qIdJr);
+    double fullDD = rInv3 * dIdJ - 3.0 * rInv3 * rInv2 * dIr * dJr;
+    double fullEnergy = fullCC + fullCD + fullDD;
 
     // PME direct energy = mScale * erfc - (1-mScale) * erf
     //                   = mScale * erfc - (1-mScale) * (full - erfc)
     //                   = erfc - (1-mScale) * full
     double pmeDirectEnergy = (erfcEnergy - (1.0 - mScale) * fullEnergy) * (_electric / _dielectric);
 
-    if (_numParticles == 2) {
-        std::cout << "PME Direct Space Pair " << iIndex << "-" << jIndex << ":" << std::endl;
-        std::cout << "  r = " << r << " nm" << std::endl;
-        std::cout << "  ralpha = " << ralpha << std::endl;
-        std::cout << "  erfc(ralpha) = " << erfc(ralpha) << std::endl;
-        std::cout << "  bn0 = " << bn0 << " (should be erfc(ralpha)/r)" << std::endl;
-        std::cout << "  bn0 * r = " << (bn0 * r) << " (should equal erfc(ralpha))" << std::endl;
-        std::cout << "  qI = " << particleI.charge << std::endl;
-        std::cout << "  qJ = " << particleJ.charge << std::endl;
-        std::cout << "  qIqJ = " << qIqJ << std::endl;
-        std::cout << "  bn0 * qIqJ (charge-charge term) = " << (bn0 * qIqJ) << std::endl;
-        std::cout << "  qIdJr term = " << (bn1 * qIdJr) << std::endl;
-        std::cout << "  qJdIr term = " << (bn1 * qJdIr) << std::endl;
-        std::cout << "  dIr*dJr term = " << (bn2 * dIr * dJr) << std::endl;
-        std::cout << "  dIdJ term = " << (bn1 * dIdJ) << std::endl;
-        std::cout << "  erfcEnergy (raw) = " << erfcEnergy << std::endl;
-        std::cout << "  mScale = " << mScale << std::endl;
-        std::cout << "  _electric = " << _electric << std::endl;
-        std::cout << "  _dielectric = " << _dielectric << std::endl;
-        std::cout << "  pmeDirectEnergy = " << pmeDirectEnergy << " kJ/mol" << std::endl;
-    }
+    // Track components for debug output
+    double ccEnergy = (erfcCC - (1.0 - mScale) * fullCC) * (_electric / _dielectric);
+    double cdEnergy = (erfcCD - (1.0 - mScale) * fullCD) * (_electric / _dielectric);
+    double ddEnergy = (erfcDD - (1.0 - mScale) * fullDD) * (_electric / _dielectric);
 
     Vec3 rhat = deltaR / r;
 
@@ -1328,79 +1335,160 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     double uJdI = uJ.dot(particleI.dipole);
     double uIuJ = uI.dot(uJ);
 
-        double inducedEnergy = bn1 * (particleI.charge * uJr - particleJ.charge * uIr)
-                         + bn1 * (uIdJ + uJdI)
-                         + bn2 * (dIr * uJr + dJr * uIr);
+    // Calculate Thole damping factors for energy and force derivatives
+    // Thole damping for PME direct space (matches AMOEBA)
+    // Energy damping: thole_c, thole_d0, thole_d1
+    // Force damping: dthole_c, dthole_d0, dthole_d1
+    double thole_c = 1.0, thole_d0 = 1.0, thole_d1 = 1.0;
+    double dthole_c = 1.0, dthole_d0 = 1.0, dthole_d1 = 1.0;
+    if (particleI.polarizability > 0 && particleJ.polarizability > 0) {
+        if (_tholeDampingType != TholeDipoleForce::NoDamping) {
+            const double a = _tholeDampingParameter;
+            double r_pol_scale;
+            if (fabs(particleI.polarizability * particleJ.polarizability) > 1e-12) {
+                r_pol_scale = pow(particleI.polarizability * particleJ.polarizability, 1.0/6.0);
+            }
+            else {
+                r_pol_scale = 1.0;
+            }
+            const double u = r / r_pol_scale;
 
-        if (_polarizationType == Mutual) {
-            // Calculate Thole damping factors for I-I interaction
-            double damp1 = 1.0, damp2 = 1.0;
-
-            if (particleI.polarizability > 0 && particleJ.polarizability > 0) {
-                if (_tholeDampingType != TholeDipoleForce::NoDamping) {
-                    const double a = _tholeDampingParameter;
-                    double r_pol_scale;
-                    if (fabs(particleI.polarizability * particleJ.polarizability) > 1e-12) {
-                        r_pol_scale = pow(particleI.polarizability * particleJ.polarizability, 1.0/6.0);
-                    }
-                    else {
-                        r_pol_scale = 1.0;
-                    }
-                    const double u = r / r_pol_scale;
-
-                    if (_tholeDampingType == TholeDipoleForce::Exponential) {
-                        const double ar = a * r;
-                        const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
-                        damp1 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
-                        damp2 = damp1 - exp_ar * (ar * ar * ar / 6.0);
-                    }
-                    else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
-                        const double au3 = a * u * u * u;
-                        const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
-                        damp1 = 1.0 - exp_au3;
-                        damp2 = 1.0 - (1.0 + au3) * exp_au3;
-                    }
-                    else { // TholeDipoleForce::Linear
-                        const double s = a * r_pol_scale;
-                        if (r >= s) {
-                            damp1 = damp2 = 1.0;
-                        } else {
-                            const double v = r / s;
-                            const double v2 = v * v;
-                            const double v3 = v2 * v;
-                            damp1 = (4.0 - 3.0 * v) * v3;
-                            damp2 = v3 * v;
-                        }
-                    }
+            if (_tholeDampingType == TholeDipoleForce::Exponential) {
+                const double ar = a * r;
+                const double exp_ar = (ar < 50.0) ? exp(-ar) : 0.0;
+                thole_c = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+                thole_d0 = thole_c;
+                thole_d1 = thole_c - exp_ar * (ar * ar * ar / 6.0);
+                dthole_c = thole_c;  // For exponential, same as energy
+                dthole_d0 = thole_d0;
+                dthole_d1 = thole_d1;
+            }
+            else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
+                const double au3 = a * u * u * u;
+                const double exp_au3 = (au3 < 50.0) ? exp(-au3) : 0.0;
+                const double a2u6 = au3 * au3;
+                // Energy damping factors
+                thole_c = 1.0 - exp_au3;
+                thole_d0 = 1.0 - exp_au3 * (1.0 + 1.5 * au3);
+                thole_d1 = 1.0 - exp_au3;
+                // Force damping factors (from AMOEBA)
+                dthole_c = 1.0 - exp_au3 * (1.0 + 1.5 * au3);
+                dthole_d0 = 1.0 - exp_au3 * (1.0 + au3 + 1.5 * a2u6);
+                dthole_d1 = 1.0 - exp_au3 * (1.0 + au3);
+            }
+            else { // TholeDipoleForce::Linear
+                const double s = a * r_pol_scale;
+                if (r >= s) {
+                    thole_c = thole_d0 = thole_d1 = 1.0;
+                    dthole_c = dthole_d0 = dthole_d1 = 1.0;
+                } else {
+                    const double v = r / s;
+                    const double v2 = v * v;
+                    const double v3 = v2 * v;
+                    thole_c = (4.0 - 3.0 * v) * v3;
+                    thole_d0 = thole_c;
+                    thole_d1 = v3 * v;
+                    dthole_c = thole_c;  // Simplified for Linear
+                    dthole_d0 = thole_d0;
+                    dthole_d1 = thole_d1;
                 }
             }
-
-            // Apply Thole damping to I-I energy
-            inducedEnergy += - (damp1 * bn1) * uIuJ + (damp2 * bn2) * uIr * uJr;
         }
+    }
 
-        pmeDirectEnergy -= inducedEnergy * iScale * (_electric / _dielectric);
+    // Permanent-induced energy (charge-induced, perm_dipole-induced): use mScale
+    // Factor of 0.5 for variational/linear response formulation: E_pol = -0.5 * μ_ind · E_perm
+    // PME direct space uses: Thole_damped_undamped + (erfc_damped - undamped)
+    //                      = thole_c/r^n + bn - 1/r^n = bn - (1-thole_c)/r^n
 
-// erfc-damped force terms
-// Charge-charge
-force += qIqJ * bn1 * deltaR;
+    // Charge-induced: C-Ind interaction goes like q * (μ·r) / r³
+    // For PME with Thole damping:
+    //   Non-excluded pairs: erfc + (thole - 1) * full = erfc - (1 - thole) * full
+    //   Excluded pairs: erfc - full
+    //   Combined: erfc - (1 - mScale * thole) * full
+    double qIndErfc = bn1 * (particleI.charge * uJr - particleJ.charge * uIr);
+    double qIndFull = rInv3 * (particleI.charge * uJr - particleJ.charge * uIr);
+    double qIndEnergy = qIndErfc - (1.0 - mScale * thole_c) * qIndFull;
 
-// Charge-dipole radial
-force += (particleJ.charge * muIr - particleI.charge * muJr) * (r * bn2 - bn1 / r) * deltaR;
+    // Dipole-induced: D-Ind interaction has both 1/r³ and 1/r⁵ terms
+    // Use separate Thole damping for each term (thole_d0 for 1/r³, thole_d1 for 1/r⁵)
+    double dIndErfc = bn1 * (uIdJ + uJdI) - bn2 * (dIr * uJr + dJr * uIr);
+    double dIndFull0 = rInv3 * (uIdJ + uJdI);  // 1/r³ term
+    double dIndFull1 = -3.0 * rInv5 * (dIr * uJr + dJr * uIr);  // 1/r⁵ term
+    double dIndEnergy = dIndErfc - (1.0 - mScale * thole_d0) * dIndFull0 - (1.0 - mScale * thole_d1) * dIndFull1;
 
-// Charge-dipole perpendicular
-force += bn1 * (particleI.charge * muJ_perp - particleJ.charge * muI_perp);
+    // Q-Ind: positive qIndEnergy = stabilizing, subtract to lower energy
+    pmeDirectEnergy += -0.5 * qIndEnergy * (_electric / _dielectric);
+    // D-Ind: negative dIndEnergy = stabilizing (tensor formula), add to lower energy
+    pmeDirectEnergy += 0.5 * dIndEnergy * (_electric / _dielectric);
 
-// Dipole-dipole radial
-force += (bn2 * muIdotMuJ + (2.0 * bn2 - r * r * bn3) * muIr * muJr) * deltaR;
+    // Induced-induced energy: use iScale (with Thole damping for Mutual)
+    // Uses thole_d0 for 1/r³ term and thole_d1 for 1/r⁵ term
+    // Same tensor formula as D-Ind: negative = stabilizing
+    double indIndEnergyVal = 0.0;
+    if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
+        indIndEnergyVal = (thole_d0 * bn1) * uIuJ - (thole_d1 * bn2) * uIr * uJr;
+        pmeDirectEnergy += indIndEnergyVal * iScale * (_electric / _dielectric);
+    }
 
-// Dipole-dipole perpendicular
-force += bn2 * r * (muJr * muI_perp + muIr * muJ_perp);
+    // Force calculation: erfc-damped force terms (permanent multipoles)
+    // Charge-charge
+    force += qIqJ * bn1 * deltaR;
+    // Charge-dipole radial
+    force += (particleJ.charge * muIr - particleI.charge * muJr) * (r * bn2 - bn1 / r) * deltaR;
+    // Charge-dipole perpendicular
+    force += bn1 * (particleI.charge * muJ_perp - particleJ.charge * muI_perp);
+    // Dipole-dipole radial
+    force += (bn2 * muIdotMuJ + (2.0 * bn2 - r * r * bn3) * muIr * muJr) * deltaR;
+    // Dipole-dipole perpendicular
+    force += bn2 * r * (muJr * muI_perp + muIr * muJ_perp);
+
+    // Induced dipole force contributions
+    // Perm-ind uses same exclusion correction pattern as perm-perm
+    // Ind-ind uses iScale
+    Vec3 indForceTotal(0.0, 0.0, 0.0);
+    Vec3 fullIndForce(0.0, 0.0, 0.0);  // Full Coulomb perm-ind for exclusion correction
+    {
+        double uIr_bn = uI.dot(rhat);
+        double uJr_bn = uJ.dot(rhat);
+        Vec3 uI_perp = uI - uIr_bn * rhat;
+        Vec3 uJ_perp = uJ - uJr_bn * rhat;
+
+        // Charge-induced dipole force (erfc-damped) - NOT scaled by mScale
+        Vec3 cIndForce(0.0, 0.0, 0.0);
+        cIndForce += -(particleI.charge * uJr_bn - particleJ.charge * uIr_bn) * (r * bn2 - bn1 / r) * deltaR;
+        cIndForce += -bn1 * (particleJ.charge * uI_perp - particleI.charge * uJ_perp);
+        indForceTotal += cIndForce;
+
+        // Full Coulomb charge-induced force for exclusion correction
+        // F = q * (3(u·rhat)rhat - u) / r³
+        fullIndForce += (particleJ.charge * (3.0 * uIr_bn * rhat - uI) -
+                         particleI.charge * (3.0 * uJr_bn * rhat - uJ)) * rInv3;
+
+        // Permanent dipole - induced dipole force (erfc-damped) - NOT scaled by mScale
+        Vec3 dIndForce(0.0, 0.0, 0.0);
+        dIndForce += (bn2 * (uIdJ + uJdI) + (2.0 * bn2 - r * r * bn3) * (muIr * uJr_bn + muJr * uIr_bn)) * deltaR;
+        dIndForce += bn2 * r * (muIr * uJ_perp + uJr_bn * muI_perp + muJr * uI_perp + uIr_bn * muJ_perp);
+        indForceTotal += dIndForce;
+
+        // Full Coulomb dipole-induced force for exclusion correction
+        // Same tensor form as dipole-dipole: F = 3*(d·rhat*u + u·rhat*d + (d·u)rhat - 5*(d·rhat)(u·rhat)rhat)/r⁴
+        fullIndForce += rInv4 * (3.0 * (muIr * uJ + uJr_bn * particleI.dipole + muJr * uI + uIr_bn * particleJ.dipole
+                                       + (uIdJ + uJdI) * rhat)
+                                - 15.0 * (muIr * uJr_bn + muJr * uIr_bn) * rhat);
+
+        // Induced-induced dipole (only for Mutual, scaled by iScale)
+        if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
+            Vec3 indIndForce(0.0, 0.0, 0.0);
+            indIndForce += (dthole_d0 * bn2 * uIuJ + (2.0 * dthole_d1 * bn2 - r * r * bn3) * uIr_bn * uJr_bn) * deltaR;
+            indIndForce += dthole_d1 * bn2 * r * (uJr_bn * uI_perp + uIr_bn * uJ_perp);
+            indForceTotal += iScale * indIndForce;
+        }
+    }
+    force += indForceTotal;
 
     // Full Coulomb (undamped) force for exclusion correction
     Vec3 fullForce(0.0, 0.0, 0.0);
-    double rInv4 = rInv2 * rInv2;
-    double rInv5 = rInv4 * rInv;
 
     // Charge-charge: F = q1*q2/r² * rhat = q1*q2/r³ * deltaR
     fullForce += qIqJ * rInv3 * deltaR;
@@ -1413,14 +1501,14 @@ force += bn2 * r * (muJr * muI_perp + muIr * muJ_perp);
     fullForce += rInv4 * (3.0 * (muIr * particleJ.dipole + muJr * particleI.dipole + muIdotMuJ * rhat)
                          - 15.0 * muIr * muJr * rhat);
 
-    // erfc-damped field for torques
-    // The dipole field uses bn2*r² for the radial term (not just bn2) to match dimensions
-    // Field from dipole: E = (3*(μ·rhat)*rhat - μ)/r³ → bn2*r²*muJr*rhat - bn1*μJ for erfc damping
-    // Field from charge: E = q/r² → bn1*r*rhat for erfc damping (bn1 ≈ 1/r³, so bn1*r ≈ 1/r²)
+    // Add perm-ind full Coulomb for exclusion correction
+    fullForce += fullIndForce;
+
+    // erfc-damped field for torques (permanent multipoles only - induced dipoles are isotropic)
     Vec3 fieldAtI_erfc = -particleJ.charge * bn1 * r * rhat + (bn2 * r2 * muJr * rhat - bn1 * particleJ.dipole);
     Vec3 fieldAtJ_erfc = particleI.charge * bn1 * r * rhat + (bn2 * r2 * muIr * rhat - bn1 * particleI.dipole);
 
-    // Full Coulomb field for exclusion correction
+    // Full Coulomb field for exclusion correction (permanent multipoles only)
     Vec3 fieldAtI_full = -particleJ.charge * rInv2 * rhat + (3.0 * muJr * rhat - particleJ.dipole) * rInv3;
     Vec3 fieldAtJ_full = particleI.charge * rInv2 * rhat + (3.0 * muIr * rhat - particleI.dipole) * rInv3;
 
@@ -1428,17 +1516,7 @@ force += bn2 * r * (muJr * muI_perp + muIr * muJ_perp);
     Vec3 fieldAtI = fieldAtI_erfc - (1.0 - mScale) * fieldAtI_full;
     Vec3 fieldAtJ = fieldAtJ_erfc - (1.0 - mScale) * fieldAtJ_full;
 
-    // PME direct force = erfc_force - (1-mScale) * full_force
     Vec3 forceTotal = (force - (1.0 - mScale) * fullForce) * (_electric / _dielectric);
-
-    if (_numParticles == 8 && iIndex == 0 && jIndex < 4) {
-        std::cout << "Direct force pair " << iIndex << "-" << jIndex << " (mScale=" << mScale << "):" << std::endl;
-        std::cout << "  erfc force: " << force << std::endl;
-        std::cout << "  full force: " << fullForce << std::endl;
-        std::cout << "  (1-mScale)*fullForce: " << (1.0 - mScale) * fullForce << std::endl;
-        std::cout << "  force - (1-mScale)*fullForce: " << (force - (1.0 - mScale) * fullForce) << std::endl;
-        std::cout << "  forceTotal (with electric): " << forceTotal << std::endl;
-    }
 
     forces[iIndex] -= forceTotal;
     forces[jIndex] += forceTotal;

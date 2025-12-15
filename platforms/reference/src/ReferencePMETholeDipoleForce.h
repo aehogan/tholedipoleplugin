@@ -135,6 +135,7 @@ private:
     double _fixedMultipoleRecipEnergy;
     double _inducedDipoleRecipEnergy;
 
+
     double _computeBoxVolume() const {
         const Vec3& a = _periodicBoxVectors[0];
         const Vec3& b = _periodicBoxVectors[1];
@@ -162,6 +163,8 @@ private:
     void computeFixedPotentialFromGrid();
     void computeInducedPotentialFromGrid();
     double computeReciprocalSpaceFixedMultipoleForceAndEnergy(const vector<TholeDipoleParticleData>& particleData,
+                                                              vector<Vec3>& forces, vector<Vec3>& torques) const;
+    double computeReciprocalSpaceInducedDipoleForceAndEnergy(const vector<TholeDipoleParticleData>& particleData,
                                                               vector<Vec3>& forces, vector<Vec3>& torques) const;
     void recordFixedMultipoleField();
     void calculatePmeDirectInducedDipolePairIxn(const TholeDipoleParticleData& particleI,

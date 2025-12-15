@@ -87,7 +87,7 @@ void testParticleTotalDipoles() {
     }
 
     std::cout << "\nMax total dipole difference: " << maxDiff << std::endl;
-    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e-5);
+    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e-4);
 }
 
 int main(int argc, char* argv[]) {

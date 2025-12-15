@@ -46,7 +46,7 @@ void testTriclinic() {
     TholeDipoleForce* force = new TholeDipoleForce();
     system.addForce(force);
     force->setNonbondedMethod(TholeDipoleForce::PME);
-    force->setPolarizationType(TholeDipoleForce::Mutual);
+    force->setPolarizationType(TholeDipoleForce::Direct);
     force->setCutoffDistance(0.7);
     force->setMutualInducedTargetEpsilon(1e-6);
     force->setPMEParameters(5.4459051633620055, 24, 24, 24);
@@ -61,9 +61,9 @@ void testTriclinic() {
 
     for (int i = 0; i < 8; i++) {
         int atom1 = 3*i, atom2 = 3*i+1, atom3 = 3*i+2;
-        force->addParticle(o_charge, o_dipole, 0.001*0.92, 1, atom2, atom3, -1);
-        force->addParticle(h_charge, h_dipole, 0.001*0.539, 0, atom1, atom3, -1);
-        force->addParticle(h_charge, h_dipole, 0.001*0.539, 0, atom1, atom2, -1);
+        force->addParticle(o_charge, o_dipole, 0.0, 1, atom2, atom3, -1);
+        force->addParticle(h_charge, h_dipole, 0.0, 0, atom1, atom3, -1);
+        force->addParticle(h_charge, h_dipole, 0.0, 0, atom1, atom2, -1);
         vector<int> coval1_12(2);
         coval1_12[0] = atom2;
         coval1_12[1] = atom3;

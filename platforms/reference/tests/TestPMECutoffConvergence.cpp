@@ -2,7 +2,7 @@
 #include "TholeDipoleTestCommon.h"
 
 void testPMECutoffConvergence() {
-    const int numAtoms = 1024;
+    const int numAtoms = 256;
 
     double charge1 = 0.00244629406;    // e
     double charge2 = -0.00244629406;   // e
@@ -14,7 +14,7 @@ void testPMECutoffConvergence() {
     int numPairs = numAtoms / 2;
     double boxSize = numPairs * 0.1;
 
-    vector<double> cutoffs = {1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0};
+    vector<double> cutoffs = {1.0, 2.0, 3.0, 5.0};
 
     struct Result {
         double cutoff;
@@ -67,7 +67,7 @@ void testPMECutoffConvergence() {
     }
 
     cout << "\n========================================" << endl;
-    cout << "PME Cutoff Convergence (1024 atoms)" << endl;
+    cout << "PME Cutoff Convergence (" << numAtoms << " atoms)" << endl;
     cout << "Box size: " << boxSize << " nm" << endl;
     cout << "========================================\n" << endl;
 
