@@ -166,8 +166,6 @@ void ReferencePMETholeDipoleForce::initializeBSplineModuli()
         _pmeBsplineModuli[dim].resize(_pmeGridDimensions[dim]);
     }
 
-    static bool printed = false;
-
     double array[order];
     vector<double> bsarray(maxSize + 1, 0.0);
 
@@ -215,13 +213,6 @@ void ReferencePMETholeDipoleForce::initializeBSplineModuli()
             _pmeBsplineModuli[dim][ndata-1] = 0.5 * _pmeBsplineModuli[dim][ndata-2];
         }
 
-        // if (!printed && dim == 0) {
-        //     std::cout << "B-spline moduli (first 10 values):" << std::endl;
-        //     for (int i = 0; i < min(10, ndata); i++) {
-        //         std::cout << "  bmod[" << i << "] = " << _pmeBsplineModuli[dim][i] << std::endl;
-        //     }
-        // }
-
         // Compute and apply the optimal zeta coefficient
         int jcut = 50;
         for (int i = 1; i <= ndata; i++) {
@@ -249,15 +240,7 @@ void ReferencePMETholeDipoleForce::initializeBSplineModuli()
             }
             _pmeBsplineModuli[dim][i-1] = _pmeBsplineModuli[dim][i-1]*(zeta*zeta);
         }
-
-        // if (!printed && dim == 0) {
-        //     std::cout << "B-spline moduli after zeta (first 10 values):" << std::endl;
-        //     for (int i = 0; i < min(10, ndata); i++) {
-        //         std::cout << "  bmod[" << i << "] = " << _pmeBsplineModuli[dim][i] << std::endl;
-        //     }
-        // }
     }
-    printed = true;
 }
 
 double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDipoleParticleData>& particleData,
