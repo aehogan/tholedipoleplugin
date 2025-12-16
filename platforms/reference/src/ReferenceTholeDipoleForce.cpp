@@ -300,8 +300,7 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
             qi * uj_dot_rhat - qj * ui_dot_rhat
         ) * rhat;
         Vec3 f_ci = f_ci_tensor + f_ci_damp;
-        double e_ci = -iScale * thole3 * (qi * uj_dot_rhat - qj * ui_dot_rhat) * rInv2;
-        energy += e_ci;
+        // P-I energy computed via -0.5*μ·E, not pairwise
         forceJ += f_ci;
 
         // Permanent Dipole-Induced Dipole (P-I) with Thole damping
@@ -317,22 +316,15 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
             - 3.0 * dthole5 * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat)
         ) * rhat;
         Vec3 f_di = f_di_tensor + f_di_damp;
-        double e_di = iScale * (
-            thole3 * (mi_dot_uj + ui_dot_mj) * rInv3
-            - 3.0 * thole5 * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat) * rInv3
-        );
-        energy += e_di;
+        // P-I energy computed via -0.5*μ·E, not pairwise
         forceJ += f_di;
 
         fieldAtI += mScale * (3.0 * thole5 * uj_dot_rhat * rhat - thole3 * uj) * rInv3;
         fieldAtJ += mScale * (3.0 * thole5 * ui_dot_rhat * rhat - thole3 * ui) * rInv3;
 
         // Induced Dipole-Induced Dipole (I-I)
+        // I-I energy absorbed into -0.5*μ·E at self-consistency; forces still needed
         if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
-            double e_ii = iScale * (
-                thole3 * ui_dot_uj * rInv3
-                - 3.0 * thole5 * ui_dot_rhat * uj_dot_rhat * rInv3
-            );
             Vec3 f_ii_tensor = iScale * rInv4 * (
                 thole5 * 3.0 * (ui_dot_rhat * uj + uj_dot_rhat * ui)
                 - thole5 * 15.0 * ui_dot_rhat * uj_dot_rhat * rhat
@@ -344,7 +336,6 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
             ) * rhat;
 
             Vec3 f_ii = f_ii_tensor + f_ii_damp;
-            energy += e_ii;
             forceJ += f_ii;
         }
     }
@@ -374,6 +365,7 @@ double ReferenceTholeDipoleForce::calculateElectrostatic(
     double energy = 0.0;
 
     // Calculate pairwise interactions
+    // P-P energy computed here; P-I energy computed via -0.5*μ·E in calculateForceAndEnergy
     for (unsigned int i = 0; i < _numParticles; i++) {
         for (unsigned int j = i + 1; j < _numParticles; j++) {
             double mScale = 1.0;
@@ -385,17 +377,8 @@ double ReferenceTholeDipoleForce::calculateElectrostatic(
                 iScale = getScaleFactor(i, j, I_SCALE);
             }
 
-            // Calculate P-P only (iScale=0) for energy
-            vector<Vec3> tempForces(forces.size());
-            vector<Vec3> tempTorques(torques.size());
-            double ePP = calculateElectrostaticPairIxn(particleData[i], particleData[j],
-                                                       mScale, 0.0, tempForces, tempTorques);
-
-            // Calculate full interaction (for forces) but only add P-P to energy
-            // The P-I energy is NOT computed pairwise - it's computed as -0.5*μ·E
-            calculateElectrostaticPairIxn(particleData[i], particleData[j],
-                                          mScale, iScale, forces, torques);
-            energy += ePP;
+            energy += calculateElectrostaticPairIxn(particleData[i], particleData[j],
+                                                    mScale, iScale, forces, torques);
         }
     }
 
