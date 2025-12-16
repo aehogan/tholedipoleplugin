@@ -20,7 +20,7 @@ ReferenceTholeDipoleForce::~ReferenceTholeDipoleForce() {
 void ReferenceTholeDipoleForce::initialize() {
     _electric = ONE_4PI_EPS0;
     _dielectric = 1.0;
-    _mutualInducedDipoleTargetEpsilon = 1.0e-03;
+    _mutualInducedDipoleTargetEpsilon = 1.0e-05;
     _maximumMutualInducedDipoleIterations = 60;
     _mutualInducedDipoleEpsilon = 1.0e+50;
     _mutualInducedDipoleConverged = 0;
@@ -85,9 +85,9 @@ void ReferenceTholeDipoleForce::setTholeDampingParameter(double tholeDampingPara
 
 void ReferenceTholeDipoleForce::computeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
                                                            double& thole3, double& thole5,
-                                                           double& dthole3, double& dthole5) const {
+                                                           double& thole3_dr, double& thole5_dr) const {
     thole3 = thole5 = 1.0;
-    dthole3 = dthole5 = 0.0;
+    thole3_dr = thole5_dr = 0.0;
 
     if (_tholeDampingType == TholeDipoleForce::NoDamping) {
         return;
@@ -108,8 +108,8 @@ void ReferenceTholeDipoleForce::computeTholeDampingFactors(double r, double pola
         thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
         thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
         if (ar < 50.0) {
-            dthole3 = 0.5 * a * a * a * r * r * exp_ar;
-            dthole5 = a * a * a * a * r * r * r * exp_ar / 6.0;
+            thole3_dr = 0.5 * a * a * a * r * r * exp_ar;
+            thole5_dr = a * a * a * a * r * r * r * exp_ar / 6.0;
         }
     }
     else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
@@ -118,8 +118,8 @@ void ReferenceTholeDipoleForce::computeTholeDampingFactors(double r, double pola
         thole3 = 1.0 - exp_au3;
         thole5 = 1.0 - (1.0 + au3) * exp_au3;
         if (au3 < 50.0) {
-            dthole3 = exp_au3 * a * 3.0 * u * u / r_pol_scale;
-            dthole5 = exp_au3 * a * 3.0 * u * u * au3 / r_pol_scale;
+            thole3_dr = exp_au3 * a * 3.0 * u * u / r_pol_scale;
+            thole5_dr = exp_au3 * a * 3.0 * u * u * au3 / r_pol_scale;
         }
     }
     else { // TholeDipoleForce::Linear
@@ -130,8 +130,8 @@ void ReferenceTholeDipoleForce::computeTholeDampingFactors(double r, double pola
             const double v3 = v2 * v;
             thole3 = (4.0 - 3.0 * v) * v3;
             thole5 = v3 * v;
-            dthole3 = (12.0 * v2 - 12.0 * v3) / s;
-            dthole5 = 4.0 * v3 / s;
+            thole3_dr = (12.0 * v2 - 12.0 * v3) / s;
+            thole5_dr = 4.0 * v3 / s;
         }
     }
 }
@@ -238,9 +238,9 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
     const Vec3& ui = _inducedDipole[iIndex];
     const Vec3& uj = _inducedDipole[jIndex];
 
-    double thole3, thole5, dthole3, dthole5;
+    double thole3, thole5, thole3_dr, thole5_dr;
     computeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
-                               thole3, thole5, dthole3, dthole5);
+                               thole3, thole5, thole3_dr, thole5_dr);
 
     double energy = 0.0;
     Vec3 forceJ(0.0, 0.0, 0.0);
@@ -296,7 +296,7 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
             qi * thole3 * (3.0 * uj_dot_rhat * rhat - uj) * rInv3
             - qj * thole3 * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
         );
-        Vec3 f_ci_damp = mScale * dthole3 * rInv2 * (
+        Vec3 f_ci_damp = mScale * thole3_dr * rInv2 * (
             qi * uj_dot_rhat - qj * ui_dot_rhat
         ) * rhat;
         Vec3 f_ci = f_ci_tensor + f_ci_damp;
@@ -312,8 +312,8 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
             + thole3 * 3.0 * (mi_dot_uj + ui_dot_mj) * rhat
         );
         Vec3 f_di_damp = -mScale * rInv3 * (
-            dthole3 * (mi_dot_uj + ui_dot_mj)
-            - 3.0 * dthole5 * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat)
+            thole3_dr * (mi_dot_uj + ui_dot_mj)
+            - 3.0 * thole5_dr * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat)
         ) * rhat;
         Vec3 f_di = f_di_tensor + f_di_damp;
         // P-I energy computed via -0.5*μ·E, not pairwise
@@ -331,8 +331,8 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
                 + thole3 * 3.0 * ui_dot_uj * rhat
             );
             Vec3 f_ii_damp = -iScale * rInv3 * (
-                dthole3 * ui_dot_uj
-                - 3.0 * dthole5 * ui_dot_rhat * uj_dot_rhat
+                thole3_dr * ui_dot_uj
+                - 3.0 * thole5_dr * ui_dot_rhat * uj_dot_rhat
             ) * rhat;
 
             Vec3 f_ii = f_ii_tensor + f_ii_damp;
@@ -461,6 +461,8 @@ double ReferenceTholeDipoleForce::normalizeVec3(Vec3& vector) const {
     double norm = sqrt(vector.dot(vector));
     if (norm > 1e-12) {
         vector *= (1.0/norm);
+    } else {
+        vector = Vec3(1.0, 0.0, 0.0);
     }
     return norm;
 }
@@ -618,9 +620,9 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     const double rInv3 = rInv2 * rInv;
     Vec3 rHat = rVec * rInv;
 
-    double thole3, thole5, dthole3, dthole5;
+    double thole3, thole5, thole3_dr, thole5_dr;
     computeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
-                               thole3, thole5, dthole3, dthole5);
+                               thole3, thole5, thole3_dr, thole5_dr);
 
     // --- Field at I due to J (permanent charge + permanent dipole) ---
     Vec3 fieldAtI(0.0, 0.0, 0.0);
@@ -719,9 +721,9 @@ void ReferenceTholeDipoleForce::calculateInducedDipolePairIxn(
         field[particleJ] += -inducedDipole[particleI] * rInv3 + deltaR * (3.0 * dDotDelta);
     }
     else {
-        double thole3, thole5, dthole3, dthole5;
+        double thole3, thole5, thole3_dr, thole5_dr;
         computeTholeDampingFactors(r, polarizabilityI, polarizabilityJ,
-                                   thole3, thole5, dthole3, dthole5);
+                                   thole3, thole5, thole3_dr, thole5_dr);
 
         // Get induced dipoles
         const Vec3& uj = inducedDipole[particleJ];
@@ -999,15 +1001,19 @@ void ReferenceTholeDipoleForce::mapTorqueToForceForParticle(
     normalizeVec3(vectorUW);
     normalizeVec3(vectorVW);
 
-    // Calculate angles
+    // Calculate angles (clamp sine values to avoid division by zero for collinear atoms)
+    const double minSin = 1e-8;
     double cosUV = vectorU.dot(vectorV);
     double sinUV = sqrt(1.0 - cosUV*cosUV);
+    if (sinUV < minSin) sinUV = minSin;
 
     double cosUW = vectorU.dot(vectorW);
     double sinUW = sqrt(1.0 - cosUW*cosUW);
+    if (sinUW < minSin) sinUW = minSin;
 
     double cosVW = vectorV.dot(vectorW);
     double sinVW = sqrt(1.0 - cosVW*cosVW);
+    if (sinVW < minSin) sinVW = minSin;
 
     // Project torque onto local axes
     Vec3 dphi;
@@ -1059,15 +1065,19 @@ void ReferenceTholeDipoleForce::mapTorqueToForceForParticle(
 
         double cosUR = vectorU.dot(vectorR);
         double sinUR = sqrt(1.0 - cosUR*cosUR);
+        if (sinUR < minSin) sinUR = minSin;
 
         double cosUS = vectorU.dot(vectorS);
         double sinUS = sqrt(1.0 - cosUS*cosUS);
+        if (sinUS < minSin) sinUS = minSin;
 
         double cosVS = vectorV.dot(vectorS);
         double sinVS = sqrt(1.0 - cosVS*cosVS);
+        if (sinVS < minSin) sinVS = minSin;
 
         double cosWS = vectorW.dot(vectorS);
         double sinWS = sqrt(1.0 - cosWS*cosWS);
+        if (sinWS < minSin) sinWS = minSin;
 
         Vec3 t1 = vectorV - vectorS*cosVS;
         Vec3 t2 = vectorW - vectorS*cosWS;
@@ -1077,9 +1087,11 @@ void ReferenceTholeDipoleForce::mapTorqueToForceForParticle(
 
         double ut1cos = vectorU.dot(t1);
         double ut1sin = sqrt(1.0 - ut1cos*ut1cos);
+        if (ut1sin < minSin) ut1sin = minSin;
 
         double ut2cos = vectorU.dot(t2);
         double ut2sin = sqrt(1.0 - ut2cos*ut2cos);
+        if (ut2sin < minSin) ut2sin = minSin;
 
         double dphiR = vectorR.dot(torque)*(-1.0);
         double dphiS = vectorS.dot(torque)*(-1.0);

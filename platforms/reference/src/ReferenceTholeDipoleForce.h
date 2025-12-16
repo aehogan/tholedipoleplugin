@@ -431,12 +431,12 @@ protected:
      * @param polarizabilityJ  polarizability of particle J
      * @param thole3           output: damping factor for r^-3 terms
      * @param thole5           output: damping factor for r^-5 terms
-     * @param dthole3          output: derivative of thole3 w.r.t. r (optional, set to 0 if not needed)
-     * @param dthole5          output: derivative of thole5 w.r.t. r (optional, set to 0 if not needed)
+     * @param thole3_dr          output: derivative of thole3 w.r.t. r
+     * @param thole5_dr          output: derivative of thole5 w.r.t. r
      */
     void computeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
                                     double& thole3, double& thole5,
-                                    double& dthole3, double& dthole5) const;
+                                    double& thole3_dr, double& thole5_dr) const;
 
     /**
      * Helper constructor method to centralize initialization of objects.

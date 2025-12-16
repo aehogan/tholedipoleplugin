@@ -218,6 +218,8 @@ void ReferencePMETholeDipoleForce::initializeBSplineModuli()
 {
     const int order = THOLE_PME_ORDER;
     int maxSize = max(max(_pmeGridDimensions[0], _pmeGridDimensions[1]), _pmeGridDimensions[2]);
+    if (maxSize < order)
+        throw OpenMMException("PME grid dimensions must be at least " + std::to_string(order));
 
     for (int dim = 0; dim < 3; dim++) {
         _pmeBsplineModuli[dim].resize(_pmeGridDimensions[dim]);
@@ -508,6 +510,8 @@ void ReferencePMETholeDipoleForce::computeBSplinePoint(double* data, double* dda
                                                        double* d2data, double* d3data,
                                                        double w, int order)
 {
+    if (order != THOLE_PME_ORDER)
+        throw OpenMMException("B-spline order must be " + std::to_string(THOLE_PME_ORDER));
     double array[THOLE_PME_ORDER][THOLE_PME_ORDER];
 
     // Order-2 spline
