@@ -47,19 +47,9 @@ static vector<Vec3>& extractPositions(ContextImpl& context) {
     return *data->positions;
 }
 
-static vector<Vec3>& extractVelocities(ContextImpl& context) {
-    ReferencePlatform::PlatformData* data = reinterpret_cast<ReferencePlatform::PlatformData*>(context.getPlatformData());
-    return *data->velocities;
-}
-
 static vector<Vec3>& extractForces(ContextImpl& context) {
     ReferencePlatform::PlatformData* data = reinterpret_cast<ReferencePlatform::PlatformData*>(context.getPlatformData());
     return *data->forces;
-}
-
-static Vec3& extractBoxSize(ContextImpl& context) {
-    ReferencePlatform::PlatformData* data = reinterpret_cast<ReferencePlatform::PlatformData*>(context.getPlatformData());
-    return *data->periodicBoxSize;
 }
 
 static Vec3* extractBoxVectors(ContextImpl& context) {
@@ -94,7 +84,6 @@ void ReferenceCalcTholeDipoleForceKernel::initialize(const System& system, const
     covalentInfo.resize(numParticles);
 
     int dipoleIndex = 0;
-    double totalCharge = 0.0;
     for (int ii = 0; ii < numParticles; ii++) {
 
         // Get particle parameters
@@ -103,7 +92,6 @@ void ReferenceCalcTholeDipoleForceKernel::initialize(const System& system, const
         std::vector<double> dipolesD;
         force.getParticleParameters(ii, charge, dipolesD, polarityD, axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY);
 
-        totalCharge += charge;
         axisTypes[ii] = axisType;
         multipoleAtomZs[ii] = multipoleAtomZ;
         multipoleAtomXs[ii] = multipoleAtomX;
