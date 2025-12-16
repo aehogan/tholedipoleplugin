@@ -321,7 +321,6 @@ double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDi
         }
     }
 
-    calculatePmeSelfTorque(particleData, torques);
     double recipEnergy = computeReciprocalSpaceFixedMultipoleForceAndEnergy(particleData, forces, torques);
     double selfEnergy = calculatePmeSelfEnergy(particleData);
 
@@ -1185,11 +1184,6 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
     energy -= plasmaTerm;
 
     return energy;
-}
-
-void ReferencePMETholeDipoleForce::calculatePmeSelfTorque(const vector<TholeDipoleParticleData>& particleData,
-                                                          vector<Vec3>& torques) const
-{
 }
 
 double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
