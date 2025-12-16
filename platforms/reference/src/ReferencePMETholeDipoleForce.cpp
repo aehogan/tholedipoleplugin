@@ -573,7 +573,7 @@ void ReferencePMETholeDipoleForce::computeBSplinePoint(double* data, double* dda
 
 void ReferencePMETholeDipoleForce::updateGridIndexAndFraction(const vector<TholeDipoleParticleData>& particleData)
 {
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         Vec3 position = particleData[i].position;
         for (int d = 0; d < 3; d++) {
             double w = position[0]*_recipBoxVectors[0][d] +
@@ -596,7 +596,7 @@ void ReferencePMETholeDipoleForce::computePmeBSplines(const vector<TholeDipolePa
     const int order = THOLE_PME_ORDER;
     double data[order], ddata[order], d2data[order], d3data[order];
 
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         for (int j = 0; j < 3; j++) {
             double w = _particleFraction[i][j];
 
@@ -636,7 +636,7 @@ void ReferencePMETholeDipoleForce::transformPotentialToCartesianCoordinates(cons
             a[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
     // Transform the potential (10 components: charge + 3 dipole + 6 derivatives)
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         cphi[10*i] = fphi[10*i];
 
         cphi[10*i+1] = a[0][0]*fphi[10*i+1] + a[0][1]*fphi[10*i+2] + a[0][2]*fphi[10*i+3];
@@ -698,63 +698,63 @@ void ReferencePMETholeDipoleForce::spreadFixedMultipolesOntoGrid(const vector<Th
 
 double ReferencePMETholeDipoleForce::performPmeReciprocalConvolution()
 {
-	int nx = _pmeGridDimensions[0];
-	int ny = _pmeGridDimensions[1];
-	int nz = _pmeGridDimensions[2];
+    int nx = _pmeGridDimensions[0];
+    int ny = _pmeGridDimensions[1];
+    int nz = _pmeGridDimensions[2];
 
-	double factor = M_PI * M_PI / (_alphaEwald * _alphaEwald);
-	double volume = fabs(_computeBoxVolume());
-	double scaleFactor = 1.0 / (M_PI * volume);
+    double factor = M_PI * M_PI / (_alphaEwald * _alphaEwald);
+    double volume = fabs(_computeBoxVolume());
+    double scaleFactor = 1.0 / (M_PI * volume);
 
-	double esum = 0.0;
+    double esum = 0.0;
 
-	int maxkx = (nx + 1) / 2;
-	int maxky = (ny + 1) / 2;
-	int maxkz = (nz + 1) / 2;
+    int maxkx = (nx + 1) / 2;
+    int maxky = (ny + 1) / 2;
+    int maxkz = (nz + 1) / 2;
 
-	for (int kx = 0; kx < nx; kx++) {
-		double mx = (kx < maxkx) ? kx : (kx - nx);
-		double mhx = mx * _recipBoxVectors[0][0];
-		double bx = _pmeBsplineModuli[0][kx];
+    for (int kx = 0; kx < nx; kx++) {
+        double mx = (kx < maxkx) ? kx : (kx - nx);
+        double mhx = mx * _recipBoxVectors[0][0];
+        double bx = _pmeBsplineModuli[0][kx];
 
-		for (int ky = 0; ky < ny; ky++) {
-			double my = (ky < maxky) ? ky : (ky - ny);
-			double mhy = mx*_recipBoxVectors[1][0] + my*_recipBoxVectors[1][1];
-			double by = _pmeBsplineModuli[1][ky];
+        for (int ky = 0; ky < ny; ky++) {
+            double my = (ky < maxky) ? ky : (ky - ny);
+            double mhy = mx*_recipBoxVectors[1][0] + my*_recipBoxVectors[1][1];
+            double by = _pmeBsplineModuli[1][ky];
 
-			for (int kz = 0; kz < nz; kz++) {
-				int index = kx*ny*nz + ky*nz + kz;
+            for (int kz = 0; kz < nz; kz++) {
+                int index = kx*ny*nz + ky*nz + kz;
 
-				if (kx == 0 && ky == 0 && kz == 0) {
-					_pmeGrid[index] = complex<double>(0, 0);
-					continue;
-				}
+                if (kx == 0 && ky == 0 && kz == 0) {
+                    _pmeGrid[index] = complex<double>(0, 0);
+                    continue;
+                }
 
-				double mz = (kz < maxkz) ? kz : (kz - nz);
-				double mhz = mx*_recipBoxVectors[2][0] +
-							my*_recipBoxVectors[2][1] +
-							mz*_recipBoxVectors[2][2];
+                double mz = (kz < maxkz) ? kz : (kz - nz);
+                double mhz = mx*_recipBoxVectors[2][0] +
+                            my*_recipBoxVectors[2][1] +
+                            mz*_recipBoxVectors[2][2];
 
-				double d1 = _pmeGrid[index].real();
-				double d2 = _pmeGrid[index].imag();
+                double d1 = _pmeGrid[index].real();
+                double d2 = _pmeGrid[index].imag();
 
-				double m2 = mhx*mhx + mhy*mhy + mhz*mhz;
-				double bz = _pmeBsplineModuli[2][kz];
-				double denom = m2 * bx * by * bz;
+                double m2 = mhx*mhx + mhy*mhy + mhz*mhz;
+                double bz = _pmeBsplineModuli[2][kz];
+                double denom = m2 * bx * by * bz;
 
-				double eterm = scaleFactor * exp(-factor*m2) / denom;
+                double eterm = scaleFactor * exp(-factor*m2) / denom;
 
-				_pmeGrid[index] = complex<double>(d1*eterm, d2*eterm);
+                _pmeGrid[index] = complex<double>(d1*eterm, d2*eterm);
 
-				double struct2 = d1*d1 + d2*d2;
-				double ets2 = eterm * struct2;
-				esum += ets2;
-			}
-		}
-	}
+                double struct2 = d1*d1 + d2*d2;
+                double ets2 = eterm * struct2;
+                esum += ets2;
+            }
+        }
+    }
 
-	double result = 0.5 * esum;
-	return result;
+    double result = 0.5 * esum;
+    return result;
 }
 
 void ReferencePMETholeDipoleForce::computeFixedPotentialFromGrid()
@@ -911,7 +911,7 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceFixedMultipoleForceAn
             fracToCart[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
     double energy = 0.0;
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         double multipole[4];
         multipole[0] = particleData[i].charge;
         multipole[1] = particleData[i].dipole[0];
@@ -965,7 +965,7 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
             cartToFrac[j][i] = fracToCart[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
     double energy = 0.0;
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         Vec3 inducedDipole;
         inducedDipole[0] = _inducedDipole[i][0]*cartToFrac[0][0] + _inducedDipole[i][1]*cartToFrac[0][1] + _inducedDipole[i][2]*cartToFrac[0][2];
         inducedDipole[1] = _inducedDipole[i][0]*cartToFrac[1][0] + _inducedDipole[i][1]*cartToFrac[1][1] + _inducedDipole[i][2]*cartToFrac[1][2];
@@ -1036,7 +1036,7 @@ void ReferencePMETholeDipoleForce::recordFixedMultipoleField()
         for (int j = 0; j < 3; j++)
             fracToCart[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         _fixedDipoleField[i][0] = -(_phi[10*i+1]*fracToCart[0][0] + _phi[10*i+2]*fracToCart[0][1] + _phi[10*i+3]*fracToCart[0][2]);
         _fixedDipoleField[i][1] = -(_phi[10*i+1]*fracToCart[1][0] + _phi[10*i+2]*fracToCart[1][1] + _phi[10*i+3]*fracToCart[1][2]);
         _fixedDipoleField[i][2] = -(_phi[10*i+1]*fracToCart[2][0] + _phi[10*i+2]*fracToCart[2][1] + _phi[10*i+3]*fracToCart[2][2]);
@@ -1101,7 +1101,7 @@ void ReferencePMETholeDipoleForce::spreadInducedDipolesOnGrid(const vector<Vec3>
             a[j][i] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
     vector<Vec3> transformedDipoles(_numParticles);
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         transformedDipoles[i] = Vec3();
         for (int j = 0; j < 3; j++)
             for (int k = 0; k < 3; k++)
@@ -1143,7 +1143,7 @@ void ReferencePMETholeDipoleForce::recordInducedDipoleField(vector<Vec3>& field)
         for (int j = 0; j < 3; j++)
             fracToCart[i][j] = _pmeGridDimensions[j]*_recipBoxVectors[i][j];
 
-    for (int i = 0; i < _numParticles; i++) {
+    for (unsigned int i = 0; i < _numParticles; i++) {
         field[i][0] -= (_phid[10*i+1]*fracToCart[0][0] + _phid[10*i+2]*fracToCart[0][1] + _phid[10*i+3]*fracToCart[0][2]);
         field[i][1] -= (_phid[10*i+1]*fracToCart[1][0] + _phid[10*i+2]*fracToCart[1][1] + _phid[10*i+3]*fracToCart[1][2]);
         field[i][2] -= (_phid[10*i+1]*fracToCart[2][0] + _phid[10*i+2]*fracToCart[2][1] + _phid[10*i+3]*fracToCart[2][2]);
@@ -1251,11 +1251,6 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     //                   = mScale * erfc - (1-mScale) * (full - erfc)
     //                   = erfc - (1-mScale) * full
     double pmeDirectEnergy = (erfcEnergy - (1.0 - mScale) * fullEnergy) * (_electric / _dielectric);
-
-    // Track components for debug output
-    double ccEnergy = (erfcCC - (1.0 - mScale) * fullCC) * (_electric / _dielectric);
-    double cdEnergy = (erfcCD - (1.0 - mScale) * fullCD) * (_electric / _dielectric);
-    double ddEnergy = (erfcDD - (1.0 - mScale) * fullDD) * (_electric / _dielectric);
 
     Vec3 rhat = deltaR / r;
 
