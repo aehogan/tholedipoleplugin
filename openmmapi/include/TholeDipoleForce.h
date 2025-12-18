@@ -170,6 +170,20 @@ public:
     void setTholeDampingParameter(double parameter);
 
     /**
+     * Get whether Thole damping is applied to the field from permanent multipoles
+     * when computing induced dipoles.
+     */
+    bool getDampPermanentInducedField() const;
+
+    /**
+     * Set whether Thole damping is applied to the field from permanent multipoles
+     * when computing induced dipoles.
+     *
+     * @param damp   if true (default), apply damping to permanent->induced field
+     */
+    void setDampPermanentInducedField(bool damp);
+
+    /**
      * Get the cutoff distance (in nm) being used for nonbonded interactions.  If the NonbondedMethod in use
      * is NoCutoff, this value will have no effect.
      *
@@ -450,6 +464,7 @@ private:
     double mutualInducedTargetEpsilon;
     double ewaldErrorTol;
     double tholeDampingParameter;
+    bool dampPermanentInducedField;
 
     class ParticleInfo;
     std::vector<ParticleInfo> particles;

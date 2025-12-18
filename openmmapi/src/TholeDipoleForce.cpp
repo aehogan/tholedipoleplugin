@@ -43,7 +43,8 @@ using std::vector;
 TholeDipoleForce::TholeDipoleForce() : nonbondedMethod(NoCutoff), polarizationType(Mutual), tholeDampingType(Amoeba),
                                        pmeBSplineOrder(5), cutoffDistance(1.0), ewaldErrorTol(1e-4),
                                        mutualInducedMaxIterations(60), mutualInducedTargetEpsilon(1e-5),
-                                       alpha(0.0), nx(0), ny(0), nz(0), tholeDampingParameter(0.39) {
+                                       alpha(0.0), nx(0), ny(0), nz(0), tholeDampingParameter(0.39),
+                                       dampPermanentInducedField(true) {
     // Default extrapolation coefficients for induced dipoles
     extrapolationCoefficients.push_back(-0.154);
     extrapolationCoefficients.push_back(0.017);
@@ -83,6 +84,14 @@ double TholeDipoleForce::getTholeDampingParameter() const {
 
 void TholeDipoleForce::setTholeDampingParameter(double parameter) {
     tholeDampingParameter = parameter;
+}
+
+bool TholeDipoleForce::getDampPermanentInducedField() const {
+    return dampPermanentInducedField;
+}
+
+void TholeDipoleForce::setDampPermanentInducedField(bool damp) {
+    dampPermanentInducedField = damp;
 }
 
 void TholeDipoleForce::setExtrapolationCoefficients(const std::vector<double> &coefficients) {

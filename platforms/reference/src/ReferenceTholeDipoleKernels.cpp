@@ -116,6 +116,7 @@ void ReferenceCalcTholeDipoleForceKernel::initialize(const System& system, const
     // Get global Thole damping parameters
     tholeDampingType = force.getTholeDampingType();
     tholeDampingParameter = force.getTholeDampingParameter();
+    dampPermanentInducedField = force.getDampPermanentInducedField();
 
     polarizationType = force.getPolarizationType();
     if (polarizationType == TholeDipolePlugin::TholeDipoleForce::Mutual) {
@@ -191,6 +192,7 @@ TholeDipolePlugin::ReferenceTholeDipoleForce* ReferenceCalcTholeDipoleForceKerne
     // Set global Thole damping parameters
     referenceTholeDipoleForce->setTholeDampingType(tholeDampingType);
     referenceTholeDipoleForce->setTholeDampingParameter(tholeDampingParameter);
+    referenceTholeDipoleForce->setDampPermanentInducedField(dampPermanentInducedField);
 
     return referenceTholeDipoleForce;
 }
@@ -269,6 +271,7 @@ void ReferenceCalcTholeDipoleForceKernel::copyParametersToContext(ContextImpl& c
     // Update global Thole damping parameters
     tholeDampingType = force.getTholeDampingType();
     tholeDampingParameter = force.getTholeDampingParameter();
+    dampPermanentInducedField = force.getDampPermanentInducedField();
 
     // Record the particle values.
     int dipoleIndex = 0;

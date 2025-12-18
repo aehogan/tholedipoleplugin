@@ -157,6 +157,18 @@ public:
     void setTholeDampingParameter(double tholeDampingParameter);
 
     /**
+     * Get whether Thole damping is applied to the field from permanent multipoles
+     * when computing induced dipoles.
+     */
+    bool getDampPermanentInducedField() const;
+
+    /**
+     * Set whether Thole damping is applied to the field from permanent multipoles
+     * when computing induced dipoles.
+     */
+    void setDampPermanentInducedField(bool damp);
+
+    /**
      * Get flag indicating if mutual induced dipoles are converged.
      *
      * @return nonzero if converged
@@ -422,6 +434,7 @@ protected:
     double _mutualInducedDipoleTargetEpsilon;
     double _debye;
     double _tholeDampingParameter;
+    bool _dampPermanentInducedField;
 
     /**
      * Compute Thole damping factors for a given particle pair.

@@ -38,6 +38,7 @@ SET(INDIVIDUAL_TESTS
     CustomPointCharges
     TwoDipoles
     TwoChargesPME
+    TwoPointChargesAmoeba
 )
 
 FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})

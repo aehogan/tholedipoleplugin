@@ -28,7 +28,7 @@ void ReferenceTholeDipoleForce::initialize() {
     _debye = 0.4803;
     _tholeDampingType = TholeDipoleForce::Amoeba;  // Default to Amoeba (ρ₂)
     _tholeDampingParameter = 0.39;  // Default Thole damping parameter
-
+    _dampPermanentInducedField = true;  // Default: apply damping to permanent->induced field
 
     _scaleMaps.resize(LAST_SCALE_TYPE_INDEX);
     _maxScaleIndex.resize(LAST_SCALE_TYPE_INDEX);
@@ -81,6 +81,14 @@ double ReferenceTholeDipoleForce::getTholeDampingParameter() const {
 
 void ReferenceTholeDipoleForce::setTholeDampingParameter(double tholeDampingParameter) {
     _tholeDampingParameter = tholeDampingParameter;
+}
+
+bool ReferenceTholeDipoleForce::getDampPermanentInducedField() const {
+    return _dampPermanentInducedField;
+}
+
+void ReferenceTholeDipoleForce::setDampPermanentInducedField(bool damp) {
+    _dampPermanentInducedField = damp;
 }
 
 void ReferenceTholeDipoleForce::computeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
@@ -291,36 +299,42 @@ double ReferenceTholeDipoleForce::calculateElectrostaticPairIxn(
 
     // --- Induced Dipole Interactions (P-I and I-I) ---
     if (fabs(iScale) > 0 || fabs(mScale) > 0) {
-        // Charge-Induced Dipole (P-I) with Thole damping
+        // For P-I interactions, use damping only if _dampPermanentInducedField is true
+        double t3_pi = _dampPermanentInducedField ? thole3 : 1.0;
+        double t5_pi = _dampPermanentInducedField ? thole5 : 1.0;
+        double t3_dr_pi = _dampPermanentInducedField ? thole3_dr : 0.0;
+        double t5_dr_pi = _dampPermanentInducedField ? thole5_dr : 0.0;
+
+        // Charge-Induced Dipole (P-I)
         Vec3 f_ci_tensor = -mScale * (
-            qi * thole3 * (3.0 * uj_dot_rhat * rhat - uj) * rInv3
-            - qj * thole3 * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
+            qi * t3_pi * (3.0 * uj_dot_rhat * rhat - uj) * rInv3
+            - qj * t3_pi * (3.0 * ui_dot_rhat * rhat - ui) * rInv3
         );
-        Vec3 f_ci_damp = mScale * thole3_dr * rInv2 * (
+        Vec3 f_ci_damp = mScale * t3_dr_pi * rInv2 * (
             qi * uj_dot_rhat - qj * ui_dot_rhat
         ) * rhat;
         Vec3 f_ci = f_ci_tensor + f_ci_damp;
         // P-I energy computed via -0.5*μ·E, not pairwise
         forceJ += f_ci;
 
-        // Permanent Dipole-Induced Dipole (P-I) with Thole damping
+        // Permanent Dipole-Induced Dipole (P-I)
         Vec3 f_di_tensor = mScale * rInv4 * (
-            thole5 * 3.0 * (mi_dot_rhat * uj + uj_dot_rhat * mi)
-            - thole5 * 15.0 * mi_dot_rhat * uj_dot_rhat * rhat
-            + thole5 * 3.0 * (mj_dot_rhat * ui + ui_dot_rhat * mj)
-            - thole5 * 15.0 * mj_dot_rhat * ui_dot_rhat * rhat
-            + thole3 * 3.0 * (mi_dot_uj + ui_dot_mj) * rhat
+            t5_pi * 3.0 * (mi_dot_rhat * uj + uj_dot_rhat * mi)
+            - t5_pi * 15.0 * mi_dot_rhat * uj_dot_rhat * rhat
+            + t5_pi * 3.0 * (mj_dot_rhat * ui + ui_dot_rhat * mj)
+            - t5_pi * 15.0 * mj_dot_rhat * ui_dot_rhat * rhat
+            + t3_pi * 3.0 * (mi_dot_uj + ui_dot_mj) * rhat
         );
         Vec3 f_di_damp = -mScale * rInv3 * (
-            thole3_dr * (mi_dot_uj + ui_dot_mj)
-            - 3.0 * thole5_dr * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat)
+            t3_dr_pi * (mi_dot_uj + ui_dot_mj)
+            - 3.0 * t5_dr_pi * (mi_dot_rhat * uj_dot_rhat + ui_dot_rhat * mj_dot_rhat)
         ) * rhat;
         Vec3 f_di = f_di_tensor + f_di_damp;
         // P-I energy computed via -0.5*μ·E, not pairwise
         forceJ += f_di;
 
-        fieldAtI += mScale * (3.0 * thole5 * uj_dot_rhat * rhat - thole3 * uj) * rInv3;
-        fieldAtJ += mScale * (3.0 * thole5 * ui_dot_rhat * rhat - thole3 * ui) * rInv3;
+        fieldAtI += mScale * (3.0 * t5_pi * uj_dot_rhat * rhat - t3_pi * uj) * rInv3;
+        fieldAtJ += mScale * (3.0 * t5_pi * ui_dot_rhat * rhat - t3_pi * ui) * rInv3;
 
         // Induced Dipole-Induced Dipole (I-I)
         // I-I energy absorbed into -0.5*μ·E at self-consistency; forces still needed
@@ -624,14 +638,17 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     computeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
                                thole3, thole5, thole3_dr, thole5_dr);
 
+    // Use damping factors for permanent->induced field only if flag is set
+    double t3 = _dampPermanentInducedField ? thole3 : 1.0;
+    double t5 = _dampPermanentInducedField ? thole5 : 1.0;
+
     // --- Field at I due to J (permanent charge + permanent dipole) ---
     Vec3 fieldAtI(0.0, 0.0, 0.0);
-    // Charge contribution with Thole damping
-    fieldAtI += rHat * (thole3 * particleJ.charge * rInv2);
-    // Dipole contribution with Thole damping:
-    // E = [3*thole5*(μ·rHat)rHat - thole3*μ] / r³
+    // Charge contribution
+    fieldAtI += rHat * (t3 * particleJ.charge * rInv2);
+    // Dipole contribution: E = [3*t5*(μ·rHat)rHat - t3*μ] / r³
     double muJ_dot_rHat = particleJ.dipole.dot(rHat);
-    fieldAtI += (3.0 * thole5 * muJ_dot_rHat * rHat - thole3 * particleJ.dipole) * rInv3;
+    fieldAtI += (3.0 * t5 * muJ_dot_rHat * rHat - t3 * particleJ.dipole) * rInv3;
 
     _fixedDipoleField[particleI.particleIndex] += fieldAtI * mScale;
 
@@ -640,11 +657,11 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     // Vector from I to J is -rVec, so rHatJI = -rHat
     Vec3 rHatJI = -rHat;
 
-    // Charge contribution with Thole damping
-    fieldAtJ += rHatJI * (thole3 * particleI.charge * rInv2);
-    // Dipole contribution with Thole damping
+    // Charge contribution
+    fieldAtJ += rHatJI * (t3 * particleI.charge * rInv2);
+    // Dipole contribution
     double muI_dot_rHatJI = particleI.dipole.dot(rHatJI);
-    fieldAtJ += (3.0 * thole5 * muI_dot_rHatJI * rHatJI - thole3 * particleI.dipole) * rInv3;
+    fieldAtJ += (3.0 * t5 * muI_dot_rHatJI * rHatJI - t3 * particleI.dipole) * rInv3;
 
     _fixedDipoleField[particleJ.particleIndex] += fieldAtJ * mScale;
 }

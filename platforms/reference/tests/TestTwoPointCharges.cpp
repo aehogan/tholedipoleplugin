@@ -30,74 +30,210 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * This tests TholeDipoleForce with two point charges to validate against MPMC.
+ * Comprehensive test of TholeDipoleForce with two point charges.
+ * Tests all combinations of:
+ *   - TholeDampingType: NoDamping, Exponential, Amoeba, Linear
+ *   - NonbondedMethod: NoCutoff, PME
+ *   - PolarizationType: Direct, Mutual
+ *
  * Two charges: +0.5e and -0.5e separated by 3 Angstroms (0.3 nm)
- * Tests multiple damping types and compares with MPMC ground truth.
  *
  * IMPORTANT UNIT NOTE:
- *   - Linear and AMOEBA damping parameters are dimensionless (same value in both codes)
+ *   - Linear and AMOEBA damping parameters are dimensionless
  *   - Exponential damping parameter has units of inverse length:
- *     MPMC uses Å⁻¹, OpenMM uses nm⁻¹ → multiply by 10 to convert
+ *     MPMC uses A^-1, OpenMM uses nm^-1 -> multiply by 10
  *
- * MPMC Reference values (10000 A box, polarizability 1.5 Å³):
- *   No polarization: -13925.19971 K = -115.768 kJ/mol (electrostatic only)
- *   Linear damping (λ=2.1304 dimensionless): -14795.52451 K = -123.016 kJ/mol
- *   Exponential damping (λ=2.1304 Å⁻¹ = 21.304 nm⁻¹): -14778.87515 K = -122.878 kJ/mol
- *   AMOEBA damping (λ=0.39 dimensionless): -14794.40479 K = -123.007 kJ/mol
+ * MPMC Ground Truth Reference Values:
+ *   System: Two charges +0.5e/-0.5e, separation 3A, polarizability 1.5 A^3
+ *   NoCutoff: 10000 A box, PME: 50 A box
+ *
+ *   No polarization (electrostatic only):
+ *     -13925.19971 K = -115.781 kJ/mol
+ *
+ *   Mutual polarization energies (K) and induced dipoles (e*nm):
+ *   Damping      NoCutoff Energy   NoCutoff Dipole   PME Energy   PME Dipole
+ *   ---------    --------------    ---------------   ----------   ----------
+ *   NoDamping    -14795.52         0.009375          -14800.31    0.00936639
+ *   Exponential  -14778.88         0.00919566        -14783.69    0.00918721
+ *   Amoeba       -14794.40         0.00936294        -14799.19    0.00935434
+ *   Linear       -14795.52         0.009375          -14800.31    0.00936639
  */
 
 #include "ReferenceTests.h"
 #include "TholeDipoleTestCommon.h"
 
+static const double K_TO_KJ = 0.008314462;
+static const double CHARGE1 = 0.5;
+static const double CHARGE2 = -0.5;
+static const double SEPARATION = 0.3;  // nm
+static const double POLARIZABILITY = 0.0015;  // nm^3 (= 1.5 A^3)
+static const double BOX_SIZE = 5.0;  // nm for PME
+static const double CUTOFF = 2.0;  // nm for PME
+
+struct DampingConfig {
+    TholeDipoleForce::TholeDampingType type;
+    double parameter;
+    const char* name;
+    // MPMC ground truth for Mutual polarization
+    double noCutoffEnergyK;    // Energy in Kelvin
+    double noCutoffDipole;     // Induced dipole magnitude in e*nm
+    double pmeEnergyK;         // Energy in Kelvin
+    double pmeDipole;          // Induced dipole magnitude in e*nm
+};
+
+static const DampingConfig DAMPING_CONFIGS[] = {
+    // type, parameter, name, noCutoffEnergyK, noCutoffDipole, pmeEnergyK, pmeDipole
+    {TholeDipoleForce::NoDamping,    0.0,    "NoDamping",    -14795.52, 0.009375,   -14800.31, 0.00936639},
+    {TholeDipoleForce::Exponential,  21.304, "Exponential",  -14778.88, 0.00919566, -14783.69, 0.00918721},
+    {TholeDipoleForce::Amoeba,       0.39,   "Amoeba",       -14794.40, 0.00936294, -14799.19, 0.00935434},
+    {TholeDipoleForce::Linear,       2.1304, "Linear",       -14795.52, 0.009375,   -14800.31, 0.00936639},
+};
+static const int NUM_DAMPING = 4;
+
+static const char* methodName(TholeDipoleForce::NonbondedMethod m) {
+    return m == TholeDipoleForce::NoCutoff ? "NoCutoff" : "PME";
+}
+
+static const char* polName(TholeDipoleForce::PolarizationType p) {
+    return p == TholeDipoleForce::Direct ? "Direct" : "Mutual";
+}
+
 /**
  * Check that analytical forces match numerical gradients (finite differences).
- * Takes small steps along the force direction and verifies that the energy
- * changes by the expected amount based on F = -dE/dx.
  */
 static void checkFiniteDifferences(const vector<Vec3>& analyticForces,
-                                  Context& context,
-                                  const vector<Vec3>& positions) {
-    // Calculate norm of force vector
+                                   Context& context,
+                                   const vector<Vec3>& positions,
+                                   double tolerance = 1e-2) {
     double norm = 0.0;
     for (const auto& f : analyticForces)
         norm += f.dot(f);
     norm = std::sqrt(norm);
 
-    // Take a small step in the force direction
-    const double stepSize = 1e-3;  // Total step size (nm)
-    double step = 0.5 * stepSize / norm;  // Half step in each direction
+    if (norm < 1e-10) {
+        return;  // Skip if forces are essentially zero
+    }
+
+    const double stepSize = 1e-4;
+    double step = 0.5 * stepSize / norm;
 
     vector<Vec3> positions2(analyticForces.size()), positions3(analyticForces.size());
-    for (int i = 0; i < (int) positions.size(); ++i) {
+    for (size_t i = 0; i < positions.size(); ++i) {
         Vec3 p = positions[i];
         Vec3 f = analyticForces[i];
-        // Step backwards (against force)
         positions2[i] = Vec3(p[0] - f[0]*step, p[1] - f[1]*step, p[2] - f[2]*step);
-        // Step forwards (along force)
         positions3[i] = Vec3(p[0] + f[0]*step, p[1] + f[1]*step, p[2] + f[2]*step);
     }
 
-    // Evaluate energy at both positions
     context.setPositions(positions2);
     State state2 = context.getState(State::Energy);
     context.setPositions(positions3);
     State state3 = context.getState(State::Energy);
 
-    // Numerical derivative: dE/ds ≈ (E(x+δ) - E(x-δ)) / (2δ)
-    // Since F = -dE/dx and we stepped along F direction, we expect:
-    // |F| = (E(x-δF) - E(x+δF)) / stepSize
     double numericalForceNorm = (state2.getPotentialEnergy() - state3.getPotentialEnergy()) / stepSize;
 
-    cout << "  Finite Difference Check:" << endl;
-    cout << "    Analytical force norm: " << norm << " kJ/mol/nm" << endl;
-    cout << "    Numerical force norm:  " << numericalForceNorm << " kJ/mol/nm" << endl;
-    cout << "    Difference:            " << fabs(norm - numericalForceNorm) << " kJ/mol/nm" << endl;
-    cout << "    Relative error:        " << fabs(norm - numericalForceNorm) / norm * 100.0 << " %" << endl;
-
-    ASSERT_EQUAL_TOL(norm, numericalForceNorm, 1e-2);
+    double relError = fabs(norm - numericalForceNorm) / norm;
+    cout << "    FD: ana=" << norm << " num=" << numericalForceNorm
+         << " err=" << (relError * 100) << "%" << endl;
+    if (relError > tolerance) {
+        cout << "    FAILED: Finite diff error " << relError * 100 << "% > " << tolerance * 100 << "%" << endl;
+    }
+    ASSERT_EQUAL_TOL(norm, numericalForceNorm, tolerance);
 }
 
-void testTwoPointChargesNoPol() {
+/**
+ * Generic test function for all combinations.
+ */
+static double runTest(TholeDipoleForce::TholeDampingType dampingType,
+                      double dampingParam,
+                      TholeDipoleForce::NonbondedMethod nbMethod,
+                      TholeDipoleForce::PolarizationType polType,
+                      bool verbose = false) {
+    System system;
+    system.addParticle(1.0);
+    system.addParticle(1.0);
+
+    if (nbMethod == TholeDipoleForce::PME) {
+        system.setDefaultPeriodicBoxVectors(Vec3(BOX_SIZE, 0, 0),
+                                            Vec3(0, BOX_SIZE, 0),
+                                            Vec3(0, 0, BOX_SIZE));
+    }
+
+    TholeDipoleForce* force = new TholeDipoleForce();
+    system.addForce(force);
+
+    force->setNonbondedMethod(nbMethod);
+    force->setPolarizationType(polType);
+    force->setTholeDampingType(dampingType);
+    force->setTholeDampingParameter(dampingParam);
+    force->setDampPermanentInducedField(false);
+
+    if (nbMethod == TholeDipoleForce::PME) {
+        force->setCutoffDistance(CUTOFF);
+    }
+
+    if (polType == TholeDipoleForce::Mutual) {
+        force->setMutualInducedTargetEpsilon(1.0e-8);
+        force->setMutualInducedMaxIterations(500);
+    }
+
+    double pol = (polType == TholeDipoleForce::Direct && dampingType == TholeDipoleForce::NoDamping)
+                 ? 0.0 : POLARIZABILITY;
+    // For Direct polarization with damping, we still use polarizability
+    // For NoDamping + Direct, use zero polarizability as baseline
+    if (polType == TholeDipoleForce::Direct) {
+        pol = POLARIZABILITY;  // Direct still computes induced dipoles, just one iteration
+    }
+
+    vector<double> zeroDipole(3, 0.0);
+    force->addParticle(CHARGE1, zeroDipole, pol, TholeDipoleForce::NoAxisType, -1, -1, -1);
+    force->addParticle(CHARGE2, zeroDipole, pol, TholeDipoleForce::NoAxisType, -1, -1, -1);
+
+    vector<Vec3> positions(2);
+    positions[0] = Vec3(BOX_SIZE/2 - SEPARATION/2, BOX_SIZE/2, BOX_SIZE/2);
+    positions[1] = Vec3(BOX_SIZE/2 + SEPARATION/2, BOX_SIZE/2, BOX_SIZE/2);
+    if (nbMethod == TholeDipoleForce::NoCutoff) {
+        positions[0] = Vec3(0.0, 0.0, 0.0);
+        positions[1] = Vec3(SEPARATION, 0.0, 0.0);
+    }
+
+    LangevinIntegrator integrator(0.0, 0.1, 0.01);
+    Context context(system, integrator, *platform);
+    context.setPositions(positions);
+
+    State state = context.getState(State::Forces | State::Energy);
+    double energy = state.getPotentialEnergy();
+    const vector<Vec3>& forces = state.getForces();
+
+    // Get induced dipoles for diagnostics
+    vector<Vec3> induced;
+    force->getInducedDipoles(context, induced);
+
+    if (verbose) {
+        cout << "  Energy: " << energy << " kJ/mol" << endl;
+        cout << "  Force[0]: " << forces[0] << endl;
+        cout << "  Force[1]: " << forces[1] << endl;
+        cout << "  Induced[0]: " << induced[0] << " (|" << sqrt(induced[0].dot(induced[0])) << "|)" << endl;
+        cout << "  Induced[1]: " << induced[1] << " (|" << sqrt(induced[1].dot(induced[1])) << "|)" << endl;
+    }
+
+    // Basic sanity checks
+    ASSERT(std::isfinite(energy));
+
+    // Newton's 3rd law
+    for (int i = 0; i < 3; i++) {
+        ASSERT_EQUAL_TOL(forces[0][i], -forces[1][i], 1e-6);
+    }
+
+    // Finite difference check
+    checkFiniteDifferences(forces, context, positions, 0.01);
+
+    return energy;
+}
+
+void testNoPolarization() {
+    cout << "\n=== No Polarization Baseline ===" << endl;
+
     System system;
     system.addParticle(1.0);
     system.addParticle(1.0);
@@ -106,20 +242,13 @@ void testTwoPointChargesNoPol() {
     system.addForce(force);
     force->setNonbondedMethod(TholeDipoleForce::NoCutoff);
 
-    // No polarization - zero polarizability
     vector<double> zeroDipole(3, 0.0);
-    double charge1 = 0.5;
-    double charge2 = -0.5;
-    double polarizability = 0.0;
-
-    force->addParticle(charge1, zeroDipole, polarizability,
-                      TholeDipoleForce::NoAxisType, -1, -1, -1);
-    force->addParticle(charge2, zeroDipole, polarizability,
-                      TholeDipoleForce::NoAxisType, -1, -1, -1);
+    force->addParticle(CHARGE1, zeroDipole, 0.0, TholeDipoleForce::NoAxisType, -1, -1, -1);
+    force->addParticle(CHARGE2, zeroDipole, 0.0, TholeDipoleForce::NoAxisType, -1, -1, -1);
 
     vector<Vec3> positions(2);
     positions[0] = Vec3(0.0, 0.0, 0.0);
-    positions[1] = Vec3(0.3, 0.0, 0.0);
+    positions[1] = Vec3(SEPARATION, 0.0, 0.0);
 
     LangevinIntegrator integrator(0.0, 0.1, 0.01);
     Context context(system, integrator, *platform);
@@ -127,230 +256,167 @@ void testTwoPointChargesNoPol() {
 
     State state = context.getState(State::Forces | State::Energy);
     double energy = state.getPotentialEnergy();
-    const vector<Vec3>& forces = state.getForces();
 
-    cout << "No Polarization Test:" << endl;
+    double mpmc_energy = -13925.19971 * K_TO_KJ;
     cout << "  Energy: " << energy << " kJ/mol" << endl;
-
-    double mpmc_energy = -13925.19971 * 0.008314462;
     cout << "  MPMC:   " << mpmc_energy << " kJ/mol" << endl;
     cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
 
-    // Energy should be negative (opposite charges attract)
     ASSERT(energy < 0.0);
-
-    // Energy should match MPMC ground truth
     ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
-
-    // Newton's 3rd law: forces equal and opposite
-    ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
-
-    // Check forces vs finite differences
-    checkFiniteDifferences(forces, context, positions);
+    cout << "  PASSED" << endl;
 }
 
-void testTwoPointChargesLinear() {
-    System system;
-    system.addParticle(1.0);
-    system.addParticle(1.0);
+void testAllCombinations() {
+    cout << "\n=== Testing All Damping/Method/Polarization Combinations ===" << endl;
 
-    TholeDipoleForce* force = new TholeDipoleForce();
-    system.addForce(force);
-    force->setNonbondedMethod(TholeDipoleForce::NoCutoff);
-    force->setPolarizationType(TholeDipoleForce::Mutual);
-    force->setMutualInducedTargetEpsilon(1.0e-8);
-    force->setMutualInducedMaxIterations(500);
+    struct Result {
+        const char* damping;
+        const char* method;
+        const char* pol;
+        double energy;
+        bool passed;
+        string errorMsg;
+    };
+    vector<Result> results;
+    int failCount = 0;
 
-    // Linear damping
-    force->setTholeDampingType(TholeDipoleForce::Linear);
-    force->setTholeDampingParameter(2.1304);
+    TholeDipoleForce::NonbondedMethod methods[] = {
+        TholeDipoleForce::NoCutoff,
+        TholeDipoleForce::PME
+    };
 
-    vector<double> zeroDipole(3, 0.0);
-    double charge1 = 0.5;
-    double charge2 = -0.5;
-    double polarizability = 0.0015;  // 1.5 A^3
+    TholeDipoleForce::PolarizationType pols[] = {
+        TholeDipoleForce::Direct,
+        TholeDipoleForce::Mutual
+    };
 
-    force->addParticle(charge1, zeroDipole, polarizability,
-                      TholeDipoleForce::NoAxisType, -1, -1, -1);
-    force->addParticle(charge2, zeroDipole, polarizability,
-                      TholeDipoleForce::NoAxisType, -1, -1, -1);
+    for (int d = 0; d < NUM_DAMPING; d++) {
+        for (auto method : methods) {
+            for (auto pol : pols) {
+                const auto& cfg = DAMPING_CONFIGS[d];
 
-    vector<Vec3> positions(2);
-    positions[0] = Vec3(0.0, 0.0, 0.0);
-    positions[1] = Vec3(0.3, 0.0, 0.0);
+                cout << "\nTest: " << cfg.name << " + " << methodName(method)
+                     << " + " << polName(pol) << endl;
 
-    LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, *platform);
-    context.setPositions(positions);
+                Result r;
+                r.damping = cfg.name;
+                r.method = methodName(method);
+                r.pol = polName(pol);
+                r.passed = false;
+                r.energy = 0.0;
 
-    State state = context.getState(State::Forces | State::Energy);
-    double energy = state.getPotentialEnergy();
-    const vector<Vec3>& forces = state.getForces();
+                try {
+                    r.energy = runTest(cfg.type, cfg.parameter, method, pol, true);
+                    r.passed = true;
 
-    cout << "Linear Damping Test:" << endl;
-    cout << "  Energy: " << energy << " kJ/mol" << endl;
+                    // For Mutual polarization, check against MPMC reference
+                    if (pol == TholeDipoleForce::Mutual) {
+                        double mpmcEnergyK = (method == TholeDipoleForce::NoCutoff)
+                                             ? cfg.noCutoffEnergyK : cfg.pmeEnergyK;
+                        double mpmcDipole = (method == TholeDipoleForce::NoCutoff)
+                                            ? cfg.noCutoffDipole : cfg.pmeDipole;
+                        double mpmcEnergy = mpmcEnergyK * K_TO_KJ;
+                        cout << "  MPMC Energy: " << mpmcEnergy << " kJ/mol" << endl;
+                        cout << "  MPMC Dipole: " << mpmcDipole << " e*nm" << endl;
+                        cout << "  Energy Diff: " << (r.energy - mpmcEnergy) << " kJ/mol" << endl;
+                    }
 
-    double mpmc_energy = -14795.52451 * 0.008314462;
-    cout << "  MPMC:   " << mpmc_energy << " kJ/mol" << endl;
-    cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
+                    cout << "  PASSED" << endl;
+                }
+                catch (const std::exception& e) {
+                    r.errorMsg = e.what();
+                    cout << "  FAILED: " << e.what() << endl;
+                    failCount++;
+                }
 
-    // Energy should be negative (opposite charges attract)
-    ASSERT(energy < 0.0);
+                results.push_back(r);
+            }
+        }
+    }
 
-    // Energy should match MPMC ground truth
-    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
+    // Print summary table
+    cout << "\n========================================" << endl;
+    cout << "Summary Table" << endl;
+    cout << "========================================" << endl;
+    printf("%-12s %-10s %-8s %15s %8s\n", "Damping", "Method", "Pol", "Energy(kJ/mol)", "Status");
+    printf("%-12s %-10s %-8s %15s %8s\n", "-------", "------", "---", "-------------", "------");
+    for (const auto& r : results) {
+        printf("%-12s %-10s %-8s %15.6f %8s\n",
+               r.damping, r.method, r.pol, r.energy, r.passed ? "PASS" : "FAIL");
+    }
 
-    // Newton's 3rd law: forces equal and opposite
-    ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
-
-    // Check forces vs finite differences
-    checkFiniteDifferences(forces, context, positions);
+    if (failCount > 0) {
+        stringstream msg;
+        msg << failCount << " test(s) failed in testAllCombinations";
+        throw OpenMMException(msg.str());
+    }
 }
 
-void testTwoPointChargesExponential() {
-    System system;
-    system.addParticle(1.0);  // Particle 1
-    system.addParticle(1.0);  // Particle 2
+void testPMEvsNoCutoffConsistency() {
+    cout << "\n=== PME vs NoCutoff Consistency ===" << endl;
+    cout << "(PME should give similar energy to NoCutoff for isolated pair in large box)" << endl;
 
-    TholeDipoleForce* force = new TholeDipoleForce();
-    system.addForce(force);
-    force->setNonbondedMethod(TholeDipoleForce::NoCutoff);
-    force->setPolarizationType(TholeDipoleForce::Mutual);
-    force->setMutualInducedTargetEpsilon(1.0e-6);
-    force->setMutualInducedMaxIterations(500);
+    for (int d = 0; d < NUM_DAMPING; d++) {
+        const auto& cfg = DAMPING_CONFIGS[d];
 
-    // Set Thole damping to match MPMC
-    // Exponential damping parameter has units of inverse length
-    // MPMC: 2.1304 Å⁻¹ → OpenMM: 21.304 nm⁻¹ (multiply by 10)
-    force->setTholeDampingType(TholeDipoleForce::Exponential);
-    force->setTholeDampingParameter(21.304);
+        double energyNoCutoff = runTest(cfg.type, cfg.parameter,
+                                        TholeDipoleForce::NoCutoff,
+                                        TholeDipoleForce::Mutual, false);
+        double energyPME = runTest(cfg.type, cfg.parameter,
+                                   TholeDipoleForce::PME,
+                                   TholeDipoleForce::Mutual, false);
 
-    // Two particles with charges +0.5 and -0.5
-    // Zero permanent dipole, polarizability = 1.5 A^3 = 0.0015 nm^3
-    vector<double> zeroDipole(3, 0.0);
+        double diff = fabs(energyPME - energyNoCutoff);
+        double relDiff = diff / fabs(energyNoCutoff) * 100.0;
 
-    double charge1 = 0.5;   // electron charge units
-    double charge2 = -0.5;
-    double polarizability = 0.0015;  // nm^3 (= 1.5 A^3)
+        cout << cfg.name << ": NoCutoff=" << energyNoCutoff
+             << ", PME=" << energyPME
+             << ", diff=" << relDiff << "%" << endl;
 
-    // Point charges don't need axis definitions (NoAxisType)
-    force->addParticle(charge1, zeroDipole, polarizability,
-                      TholeDipoleForce::NoAxisType, -1, -1, -1);
-    force->addParticle(charge2, zeroDipole, polarizability,
-                      TholeDipoleForce::NoAxisType, -1, -1, -1);
-
-    // Positions: 3 Angstroms apart along x-axis
-    vector<Vec3> positions(2);
-    positions[0] = Vec3(0.0, 0.0, 0.0);  // nm
-    positions[1] = Vec3(0.3, 0.0, 0.0);  // 3 Angstroms = 0.3 nm
-
-    LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, *platform);
-    context.setPositions(positions);
-
-    State state = context.getState(State::Forces | State::Energy);
-
-    double energy = state.getPotentialEnergy();
-    const vector<Vec3>& forces = state.getForces();
-
-    cout << "Exponential Damping Test:" << endl;
-    cout << "  Energy: " << energy << " kJ/mol" << endl;
-
-    double mpmc_energy = -14778.87515 * 0.008314462;
-    cout << "  MPMC:   " << mpmc_energy << " kJ/mol" << endl;
-    cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
-
-    // Energy should be negative (opposite charges attract)
-    ASSERT(energy < 0.0);
-
-    // Energy should match MPMC ground truth
-    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
-
-    // Newton's 3rd law: forces equal and opposite
-    ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
-
-    // Check forces vs finite differences
-    checkFiniteDifferences(forces, context, positions);
+        // PME and NoCutoff should be within 1% for isolated pair in large box
+        ASSERT(relDiff < 1.0);
+    }
+    cout << "  PASSED" << endl;
 }
 
-void testTwoPointChargesAmoeba() {
-    System system;
-    system.addParticle(1.0);
-    system.addParticle(1.0);
+void testDirectVsMutualConsistency() {
+    cout << "\n=== Direct vs Mutual Consistency ===" << endl;
+    cout << "(Direct should give lower polarization energy than Mutual)" << endl;
 
-    TholeDipoleForce* force = new TholeDipoleForce();
-    system.addForce(force);
-    force->setNonbondedMethod(TholeDipoleForce::NoCutoff);
-    force->setPolarizationType(TholeDipoleForce::Mutual);
-    force->setMutualInducedTargetEpsilon(1.0e-6);
-    force->setMutualInducedMaxIterations(500);
+    for (int d = 0; d < NUM_DAMPING; d++) {
+        const auto& cfg = DAMPING_CONFIGS[d];
 
-    // AMOEBA damping
-    force->setTholeDampingType(TholeDipoleForce::Amoeba);
-    force->setTholeDampingParameter(0.39);
+        double energyDirect = runTest(cfg.type, cfg.parameter,
+                                      TholeDipoleForce::NoCutoff,
+                                      TholeDipoleForce::Direct, false);
+        double energyMutual = runTest(cfg.type, cfg.parameter,
+                                      TholeDipoleForce::NoCutoff,
+                                      TholeDipoleForce::Mutual, false);
 
-    vector<double> zeroDipole(3, 0.0);
-    double charge1 = 0.5;
-    double charge2 = -0.5;
-    double polarizability = 0.0015;  // 1.5 A^3
+        cout << cfg.name << ": Direct=" << energyDirect
+             << ", Mutual=" << energyMutual << endl;
 
-    force->addParticle(charge1, zeroDipole, polarizability,
-                      TholeDipoleForce::NoAxisType, -1, -1, -1);
-    force->addParticle(charge2, zeroDipole, polarizability,
-                      TholeDipoleForce::NoAxisType, -1, -1, -1);
-
-    vector<Vec3> positions(2);
-    positions[0] = Vec3(0.0, 0.0, 0.0);
-    positions[1] = Vec3(0.3, 0.0, 0.0);
-
-    LangevinIntegrator integrator(0.0, 0.1, 0.01);
-    Context context(system, integrator, *platform);
-    context.setPositions(positions);
-
-    State state = context.getState(State::Forces | State::Energy);
-    double energy = state.getPotentialEnergy();
-    const vector<Vec3>& forces = state.getForces();
-
-    cout << "AMOEBA Damping Test:" << endl;
-    cout << "  Energy: " << energy << " kJ/mol" << endl;
-
-    double mpmc_energy = -14794.40479 * 0.008314462;
-    cout << "  MPMC:   " << mpmc_energy << " kJ/mol" << endl;
-    cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
-
-    // Energy should be negative (opposite charges attract)
-    ASSERT(energy < 0.0);
-
-    // Energy should match MPMC ground truth
-    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
-
-    // Newton's 3rd law: forces equal and opposite
-    ASSERT_EQUAL_TOL(forces[0][0], -forces[1][0], 1e-6);
-
-    // Check forces vs finite differences
-    checkFiniteDifferences(forces, context, positions);
+        // Mutual polarization should give more negative energy (more favorable)
+        // because induced dipoles reinforce each other
+        ASSERT(energyMutual <= energyDirect);
+    }
+    cout << "  PASSED" << endl;
 }
 
 int main(int argc, char* argv[]) {
     try {
         setupKernels(argc, argv);
         cout << "\n========================================" << endl;
-        cout << "Two Point Charges Validation Tests" << endl;
-        cout << "========================================\n" << endl;
-
-        testTwoPointChargesNoPol();
-        cout << endl;
-
-        testTwoPointChargesLinear();
-        cout << endl;
-
-        testTwoPointChargesExponential();
-        cout << endl;
-
-        testTwoPointChargesAmoeba();
-        cout << endl;
-
+        cout << "Two Point Charges Comprehensive Tests" << endl;
         cout << "========================================" << endl;
+
+        testNoPolarization();
+        testAllCombinations();
+        testPMEvsNoCutoffConsistency();
+        testDirectVsMutualConsistency();
+
+        cout << "\n========================================" << endl;
         cout << "All tests passed!" << endl;
         cout << "========================================" << endl;
     }

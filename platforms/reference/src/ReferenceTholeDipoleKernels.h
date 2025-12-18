@@ -154,6 +154,7 @@ private:
     std::vector<double> extrapolationCoefficients;
     std::vector<int> pmeGridDimension;
     double tholeDampingParameter;
+    bool dampPermanentInducedField;
 };
 
 } // namespace TholeDipolePlugin

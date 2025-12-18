@@ -342,6 +342,13 @@ double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDi
     double inducedRecipEnergy = computeReciprocalSpaceInducedDipoleForceAndEnergy(particleData, forces, torques);
 
     energy = directEnergy + recipEnergy + inducedRecipEnergy + selfEnergy;
+
+    fprintf(stderr, "THOLE PME Energy: direct=%.6f recip=%.6f indRecip=%.6f self=%.6f total=%.6f\n",
+            directEnergy, recipEnergy, inducedRecipEnergy, selfEnergy, energy);
+    fprintf(stderr, "THOLE PME Force[0]: [%.6f, %.6f, %.6f]\n", forces[0][0], forces[0][1], forces[0][2]);
+    fprintf(stderr, "THOLE PME Induced[0]: [%.9f, %.9f, %.9f]\n",
+            _inducedDipole[0][0], _inducedDipole[0][1], _inducedDipole[0][2]);
+
     return energy;
 }
 
@@ -396,11 +403,9 @@ void ReferencePMETholeDipoleForce::calculateInducedDipoleFields(const vector<Tho
     for (unsigned int i = 0; i < _numParticles; i++)
         inducedDipoleField[i] = Vec3(0.0, 0.0, 0.0);
 
+    // Use j > i to avoid double counting (each pair processed once, both fields updated)
     for (unsigned int i = 0; i < _numParticles; i++) {
-        for (unsigned int j = 0; j < _numParticles; j++) {
-            if (i == j)
-                continue;
-
+        for (unsigned int j = i + 1; j < _numParticles; j++) {
             double iScale = 1.0;
             if (j <= _maxScaleIndex[i])
                 iScale = getScaleFactor(i, j, I_SCALE);
@@ -464,25 +469,13 @@ void ReferencePMETholeDipoleForce::calculateFixedDipoleFieldPairIxn(const TholeD
     Vec3 fim = -particleJ.dipole * bn1 - deltaR * (bn1 * particleJ.charge - bn2 * djr);
     Vec3 fjm = -particleI.dipole * bn1 + deltaR * (bn1 * particleI.charge + bn2 * dir);
 
-    // Thole damping factors
-    double dampI = pow(particleI.polarizability, 1.0/6.0);
-    double dampJ = pow(particleJ.polarizability, 1.0/6.0);
-    double damp = dampI * dampJ;
-
+    // Thole damping factors - use base class function which handles all damping types
     double scaleFactor3 = 1.0;
     double scaleFactor5 = 1.0;
-
-    if (damp > 0.0) {
-        double ratio = r / damp;
-        ratio = ratio * ratio * ratio;
-        double pgamma = _tholeDampingParameter;
-        double dampExp = -pgamma * ratio;
-
-        if (dampExp > -50.0) {
-            double expdamp = exp(dampExp);
-            scaleFactor3 = 1.0 - expdamp;
-            scaleFactor5 = 1.0 - expdamp * (1.0 - dampExp);
-        }
+    double dthole3, dthole5;  // Not used for field calculation
+    if (_dampPermanentInducedField && particleI.polarizability > 0 && particleJ.polarizability > 0) {
+        computeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
+                                   scaleFactor3, scaleFactor5, dthole3, dthole5);
     }
 
     double dampedMScale3 = scaleFactor3 * mScale;
@@ -944,6 +937,9 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceFixedMultipoleForceAn
         Vec3 recipForce = Vec3(f[0]*fracToCart[0][0] + f[1]*fracToCart[0][1] + f[2]*fracToCart[0][2],
                                f[0]*fracToCart[1][0] + f[1]*fracToCart[1][1] + f[2]*fracToCart[1][2],
                                f[0]*fracToCart[2][0] + f[1]*fracToCart[2][1] + f[2]*fracToCart[2][2]);
+        if (i == 0) {
+            fprintf(stderr, "PME P-P Recip (p0): f_frac=[%.4f,0,0] recipF=[%.3f,0,0]\n", f[0], recipForce[0]);
+        }
         forces[i] -= recipForce;
     }
 
@@ -975,7 +971,14 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
         inducedDipole[1] = _inducedDipole[i][0]*cartToFrac[1][0] + _inducedDipole[i][1]*cartToFrac[1][1] + _inducedDipole[i][2]*cartToFrac[1][2];
         inducedDipole[2] = _inducedDipole[i][0]*cartToFrac[2][0] + _inducedDipole[i][1]*cartToFrac[2][1] + _inducedDipole[i][2]*cartToFrac[2][2];
 
+        // P-I reciprocal energy: μ_ind · E_perm_recip
         energy += inducedDipole[0]*_phi[10*i+1] + inducedDipole[1]*_phi[10*i+2] + inducedDipole[2]*_phi[10*i+3];
+
+        // I-I reciprocal energy: μ_ind · E_ind_recip (for Mutual)
+        // Factor 0.5 to avoid double counting (each pair counted twice in full sum)
+        if (_polarizationType == Mutual) {
+            energy += 0.5 * (inducedDipole[0]*_phid[10*i+1] + inducedDipole[1]*_phid[10*i+2] + inducedDipole[2]*_phid[10*i+3]);
+        }
 
         // Torque on permanent dipoles from induced potential
         const double* phi = &cphid[10*i];
@@ -1023,6 +1026,11 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
             f_perm[2] += multipole[k]*2.0*_phid[10*i+deriv3[k]];
         }
         f += f_perm;
+
+        if (i == 0) {
+            fprintf(stderr, "PME Recip (p0) pol=%d: f_ind=[%.3f,0,0] f_perm=[%.3f,0,0]\n",
+                    (int)_polarizationType, f_ind[0], f_perm[0]);
+        }
 
         f *= (0.5*_electric);
         forces[i] -= Vec3(f[0]*fracToCart[0][0] + f[1]*fracToCart[0][1] + f[2]*fracToCart[0][2],
@@ -1169,10 +1177,10 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
 
         dii_perm += particleI.dipole.dot(particleI.dipole);
 
-        // Note: induced-induced self-energy is NOT included here - it's handled
-        // implicitly through the variational formulation where the polarization cost
-        // (0.5*μ²/α) cancels with part of the field interaction
-        // dii_ind += _inducedDipole[ii].dot(_inducedDipole[ii]);
+        // Induced self-energy needed since we compute I-I reciprocal energy explicitly
+        if (_polarizationType == Mutual) {
+            dii_ind += _inducedDipole[ii].dot(_inducedDipole[ii]);
+        }
     }
 
     double prefac = -_alphaEwald * _electric / (_dielectric*SQRT_PI);
@@ -1284,6 +1292,11 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
                                       dthole_c, dthole_d0, dthole_d1);
     }
 
+    // For P-I energy, respect _dampPermanentInducedField flag
+    double thole_c_pi = _dampPermanentInducedField ? thole_c : 1.0;
+    double thole_d0_pi = _dampPermanentInducedField ? thole_d0 : 1.0;
+    double thole_d1_pi = _dampPermanentInducedField ? thole_d1 : 1.0;
+
     // Permanent-induced energy (charge-induced, perm_dipole-induced): use mScale
     // Factor of 0.5 for variational/linear response formulation: E_pol = -0.5 * μ_ind · E_perm
     // PME direct space uses: Thole_damped_undamped + (erfc_damped - undamped)
@@ -1296,14 +1309,14 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     //   Combined: erfc - (1 - mScale * thole) * full
     double qIndErfc = bn1 * (particleI.charge * uJr - particleJ.charge * uIr);
     double qIndFull = rInv3 * (particleI.charge * uJr - particleJ.charge * uIr);
-    double qIndEnergy = qIndErfc - (1.0 - mScale * thole_c) * qIndFull;
+    double qIndEnergy = qIndErfc - (1.0 - mScale * thole_c_pi) * qIndFull;
 
     // Dipole-induced: D-Ind interaction has both 1/r³ and 1/r⁵ terms
     // Use separate Thole damping for each term (thole_d0 for 1/r³, thole_d1 for 1/r⁵)
     double dIndErfc = bn1 * (uIdJ + uJdI) - bn2 * (dIr * uJr + dJr * uIr);
     double dIndFull0 = rInv3 * (uIdJ + uJdI);  // 1/r³ term
     double dIndFull1 = -3.0 * rInv5 * (dIr * uJr + dJr * uIr);  // 1/r⁵ term
-    double dIndEnergy = dIndErfc - (1.0 - mScale * thole_d0) * dIndFull0 - (1.0 - mScale * thole_d1) * dIndFull1;
+    double dIndEnergy = dIndErfc - (1.0 - mScale * thole_d0_pi) * dIndFull0 - (1.0 - mScale * thole_d1_pi) * dIndFull1;
 
     // Q-Ind: positive qIndEnergy = stabilizing, subtract to lower energy
     pmeDirectEnergy += -0.5 * qIndEnergy * (_electric / _dielectric);
@@ -1366,11 +1379,19 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
                                 - 15.0 * (muIr * uJr_bn + muJr * uIr_bn) * rhat);
 
         // Induced-induced dipole (only for Mutual, scaled by iScale)
+        Vec3 indIndForce(0.0, 0.0, 0.0);
         if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
-            Vec3 indIndForce(0.0, 0.0, 0.0);
             indIndForce += (dthole_d0 * bn2 * uIuJ + (2.0 * dthole_d1 * bn2 - r * r * bn3) * uIr_bn * uJr_bn) * deltaR;
             indIndForce += dthole_d1 * bn2 * r * (uJr_bn * uI_perp + uIr_bn * uJ_perp);
             indForceTotal += iScale * indIndForce;
+        }
+
+        if (particleI.particleIndex == 0) {
+            fprintf(stderr, "PME Direct (pair 0-1) pol=%d:\n", (int)_polarizationType);
+            fprintf(stderr, "  erfc P-P: [%.3f, 0, 0]\n", force[0]);
+            fprintf(stderr, "  erfc C-I: [%.3f, 0, 0]\n", cIndForce[0]);
+            fprintf(stderr, "  erfc D-I: [%.3f, 0, 0]\n", dIndForce[0]);
+            fprintf(stderr, "  erfc I-I: [%.3f, 0, 0]\n", indIndForce[0]);
         }
     }
     force += indForceTotal;
@@ -1405,6 +1426,12 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     Vec3 fieldAtJ = fieldAtJ_erfc - (1.0 - mScale) * fieldAtJ_full;
 
     Vec3 forceTotal = (force - (1.0 - mScale) * fullForce) * (_electric / _dielectric);
+
+    if (particleI.particleIndex == 0) {
+        fprintf(stderr, "  full P-I: [%.3f, 0, 0] mScale=%.1f excl=[%.3f,0,0]\n",
+                fullIndForce[0], mScale, ((1.0-mScale)*fullForce)[0]);
+        fprintf(stderr, "  forceTotal: [%.3f, 0, 0]\n", forceTotal[0]);
+    }
 
     forces[iIndex] -= forceTotal;
     forces[jIndex] += forceTotal;
