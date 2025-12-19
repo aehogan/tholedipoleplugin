@@ -100,7 +100,7 @@ void testZeroCharges() {
     // Compare with AMOEBA
     try {
         // Use compareForces for full AMOEBA comparison including dipoles
-        compareForces("ZeroCharges", system, amoebaSystem, positions, 0.01, 0.01);
+        compareForces("ZeroCharges", system, amoebaSystem, positions, 1e-4, 1e-3);
     } catch (const std::exception& e) {
         cout << "Full AMOEBA comparison failed: " << e.what() << endl;
     }

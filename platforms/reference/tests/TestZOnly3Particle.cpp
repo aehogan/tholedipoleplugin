@@ -96,7 +96,7 @@ void testZOnly3Particle() {
         cout << "AMOEBA context created successfully on platform: " << amoebaContext.getPlatform().getName() << endl;
         
         // Use compareForces for full AMOEBA comparison including dipoles
-        compareForces("ZOnly3Particle", tholeSystem, amoebaSystem, positions, 0.01, 0.01);
+        compareForces("ZOnly3Particle", tholeSystem, amoebaSystem, positions, 1e-4, 1e-3);
     } catch (const std::exception& e) {
         cout << "Full AMOEBA comparison failed: " << e.what() << endl;
     }

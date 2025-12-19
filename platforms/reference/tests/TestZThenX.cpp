@@ -115,7 +115,7 @@ void testZThenX() {
 
     // Use compareForces for full AMOEBA comparison including dipoles
     try {
-        compareForces("ZThenX", tholeSystem, amoebaSystem, positions, 0.01, 0.1);
+        compareForces("ZThenX", tholeSystem, amoebaSystem, positions, 1e-4, 1e-3);
     } catch (const std::exception& e) {
         cout << "Full AMOEBA comparison failed: " << e.what() << endl;
     }

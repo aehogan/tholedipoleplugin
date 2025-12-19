@@ -926,7 +926,7 @@ void testPythonPMEDipoles() {
     amoebaForce->setPolarizationType(AmoebaMultipoleForce::Direct);
     amoebaSystem.addForce(amoebaForce);
 
-    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 0.01, 0.5);
+    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 1e-4, 1e-3);
 }
 
 int main(int argc, char* argv[]) {

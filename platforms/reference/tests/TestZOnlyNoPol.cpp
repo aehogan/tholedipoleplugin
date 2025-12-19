@@ -77,7 +77,7 @@ void testZOnlyNoPol() {
         Context amoebaContext(amoebaSystem, amoebaInteg);
         cout << "AMOEBA context created successfully on platform: " << amoebaContext.getPlatform().getName() << endl;
         
-        compareForces("ZOnlyNoPol", system, amoebaSystem, positions, 0.01, 0.01);
+        compareForces("ZOnlyNoPol", system, amoebaSystem, positions, 1e-4, 1e-3);
     } catch (const std::exception& e) {
         cout << "Full AMOEBA comparison failed: " << e.what() << endl;
     }

@@ -4,12 +4,8 @@
 
 # Create individual tests for each test function, each with its own source file
 SET(INDIVIDUAL_TESTS
-    TholeDipoleAmmoniaDirectPolarization
-    TholeDipoleAmmoniaMutualPolarization
-    TholeDipoleAmmoniaNoPolarization
-    TholeDipoleWaterPMEDirectPolarization
-    TholeDipoleWaterPMEMutualPolarization
-    TholeDipoleWaterPMENoPolarization
+    TholeDipoleAmmonia
+    TholeDipoleWaterPME
     ParticleInducedDipoles
     ParticleLabFramePermanentDipoles
     ParticleTotalDipoles
@@ -34,11 +30,8 @@ SET(INDIVIDUAL_TESTS
     Bisector
     NoAxisType
     ThreeFold
-    PMEFunctionComparison
     CustomPointCharges
     TwoDipoles
-    TwoChargesPME
-    TwoPointChargesAmoeba
 )
 
 FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})

@@ -217,7 +217,7 @@ void testSingleWater() {
     amoebaSystem.addForce(amoebaForce);
 
     // Use compareForces for full AMOEBA comparison - this will throw if comparison fails
-    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 0.01, 0.01);
+    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 1e-4, 1e-3);
 }
 
 int main(int argc, char* argv[]) {

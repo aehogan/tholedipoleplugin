@@ -182,7 +182,9 @@ private:
 
     void computePmeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
                                        double& thole_c, double& thole_d0, double& thole_d1,
-                                       double& dthole_c, double& dthole_d0, double& dthole_d1) const;
+                                       double& dthole_c, double& dthole_d0, double& dthole_d1,
+                                       double& thole3, double& thole5,
+                                       double& thole3_dr, double& thole5_dr) const;
 
 };
 

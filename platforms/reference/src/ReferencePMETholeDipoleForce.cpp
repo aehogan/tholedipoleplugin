@@ -56,10 +56,14 @@ void ReferencePMETholeDipoleForce::setAlphaEwald(double alphaEwald)
 
 void ReferencePMETholeDipoleForce::computePmeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
                                                                   double& thole_c, double& thole_d0, double& thole_d1,
-                                                                  double& dthole_c, double& dthole_d0, double& dthole_d1) const
+                                                                  double& dthole_c, double& dthole_d0, double& dthole_d1,
+                                                                  double& thole3, double& thole5,
+                                                                  double& thole3_dr, double& thole5_dr) const
 {
     thole_c = thole_d0 = thole_d1 = 1.0;
     dthole_c = dthole_d0 = dthole_d1 = 1.0;
+    thole3 = thole5 = 1.0;
+    thole3_dr = thole5_dr = 0.0;
 
     if (_tholeDampingType == TholeDipoleForce::NoDamping) {
         return;
@@ -83,6 +87,13 @@ void ReferencePMETholeDipoleForce::computePmeTholeDampingFactors(double r, doubl
         dthole_c = thole_c;
         dthole_d0 = thole_d0;
         dthole_d1 = thole_d1;
+        // thole3/thole5 for I-I (same as NoCutoff)
+        thole3 = 1.0 - exp_ar * (1.0 + ar + 0.5 * ar * ar);
+        thole5 = thole3 - exp_ar * (ar * ar * ar / 6.0);
+        if (ar < 50.0) {
+            thole3_dr = 0.5 * a * a * a * r * r * exp_ar;
+            thole5_dr = a * a * a * a * r * r * r * exp_ar / 6.0;
+        }
     }
     else if (_tholeDampingType == TholeDipoleForce::Amoeba) {
         const double au3 = a * u * u * u;
@@ -94,6 +105,13 @@ void ReferencePMETholeDipoleForce::computePmeTholeDampingFactors(double r, doubl
         dthole_c = 1.0 - exp_au3 * (1.0 + 1.5 * au3);
         dthole_d0 = 1.0 - exp_au3 * (1.0 + au3 + 1.5 * a2u6);
         dthole_d1 = 1.0 - exp_au3 * (1.0 + au3);
+        // thole3/thole5 for I-I (same as NoCutoff)
+        thole3 = 1.0 - exp_au3;
+        thole5 = 1.0 - (1.0 + au3) * exp_au3;
+        if (au3 < 50.0) {
+            thole3_dr = exp_au3 * a * 3.0 * u * u / r_pol_scale;
+            thole5_dr = exp_au3 * a * 3.0 * u * u * au3 / r_pol_scale;
+        }
     }
     else { // TholeDipoleForce::Linear
         const double s = a * r_pol_scale;
@@ -107,6 +125,11 @@ void ReferencePMETholeDipoleForce::computePmeTholeDampingFactors(double r, doubl
             dthole_c = thole_c;
             dthole_d0 = thole_d0;
             dthole_d1 = thole_d1;
+            // thole3/thole5 for I-I (same as NoCutoff)
+            thole3 = (4.0 - 3.0 * v) * v3;
+            thole5 = v3 * v;
+            thole3_dr = (12.0 * v2 - 12.0 * v3) / s;
+            thole5_dr = 4.0 * v3 / s;
         }
     }
 }
@@ -974,11 +997,8 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
         // P-I reciprocal energy: μ_ind · E_perm_recip
         energy += inducedDipole[0]*_phi[10*i+1] + inducedDipole[1]*_phi[10*i+2] + inducedDipole[2]*_phi[10*i+3];
 
-        // I-I reciprocal energy: μ_ind · E_ind_recip (for Mutual)
-        // Factor 0.5 to avoid double counting (each pair counted twice in full sum)
-        if (_polarizationType == Mutual) {
-            energy += 0.5 * (inducedDipole[0]*_phid[10*i+1] + inducedDipole[1]*_phid[10*i+2] + inducedDipole[2]*_phid[10*i+3]);
-        }
+        // NOTE: In the variational formulation, I-I reciprocal energy is NOT included
+        // (it cancels with the polarization cost term, same as I-I direct energy)
 
         // Torque on permanent dipoles from induced potential
         const double* phi = &cphid[10*i];
@@ -1005,7 +1025,8 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
             f_ind[2] += 2.0*inducedDipole[k]*_phi[10*i+j3];
         }
 
-        // Mutual: induced-induced reciprocal force
+        // I-I reciprocal force IS needed for energy-force consistency in the variational formulation
+        // (even though I-I reciprocal energy is not explicitly included)
         if (_polarizationType == Mutual) {
             for (int k = 0; k < 3; k++) {
                 int j1 = deriv1[k+1];
@@ -1027,15 +1048,22 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
         }
         f += f_perm;
 
+        f *= (0.5*_electric);
+        Vec3 f_final(f[0]*fracToCart[0][0] + f[1]*fracToCart[0][1] + f[2]*fracToCart[0][2],
+                     f[0]*fracToCart[1][0] + f[1]*fracToCart[1][1] + f[2]*fracToCart[1][2],
+                     f[0]*fracToCart[2][0] + f[1]*fracToCart[2][1] + f[2]*fracToCart[2][2]);
+
         if (i == 0) {
-            fprintf(stderr, "PME Recip (p0) pol=%d: f_ind=[%.3f,0,0] f_perm=[%.3f,0,0]\n",
-                    (int)_polarizationType, f_ind[0], f_perm[0]);
+            // Convert f_ind and f_perm to Cartesian for comparison
+            Vec3 f_ind_cart(f_ind[0]*fracToCart[0][0], f_ind[0]*fracToCart[1][0], f_ind[0]*fracToCart[2][0]);
+            Vec3 f_perm_cart(f_perm[0]*fracToCart[0][0], f_perm[0]*fracToCart[1][0], f_perm[0]*fracToCart[2][0]);
+            f_ind_cart *= (0.5*_electric);
+            f_perm_cart *= (0.5*_electric);
+            fprintf(stderr, "PME Recip (p0) pol=%d: f_ind=[%.3f,0,0] f_perm=[%.3f,0,0] total=[%.3f,0,0]\n",
+                    (int)_polarizationType, f_ind_cart[0], f_perm_cart[0], f_final[0]);
         }
 
-        f *= (0.5*_electric);
-        forces[i] -= Vec3(f[0]*fracToCart[0][0] + f[1]*fracToCart[0][1] + f[2]*fracToCart[0][2],
-                          f[0]*fracToCart[1][0] + f[1]*fracToCart[1][1] + f[2]*fracToCart[1][2],
-                          f[0]*fracToCart[2][0] + f[1]*fracToCart[2][1] + f[2]*fracToCart[2][2]);
+        forces[i] -= f_final;
     }
 
     return 0.5*_electric*energy;
@@ -1166,7 +1194,6 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
 {
     double cii = 0.0;
     double dii_perm = 0.0;
-    double dii_ind = 0.0;
     double totalCharge = 0.0;
 
     for (unsigned int ii = 0; ii < _numParticles; ii++) {
@@ -1177,10 +1204,8 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
 
         dii_perm += particleI.dipole.dot(particleI.dipole);
 
-        // Induced self-energy needed since we compute I-I reciprocal energy explicitly
-        if (_polarizationType == Mutual) {
-            dii_ind += _inducedDipole[ii].dot(_inducedDipole[ii]);
-        }
+        // NOTE: In the variational formulation, I-I self-energy is NOT included
+        // (since we don't include I-I reciprocal energy, no self-correction needed)
     }
 
     double prefac = -_alphaEwald * _electric / (_dielectric*SQRT_PI);
@@ -1188,7 +1213,7 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
     double twoThirds = 2.0/3.0;
 
     double chargeTerm = prefac*cii;
-    double dipoleTerm = prefac*twoThirds*a2*(dii_perm + dii_ind);
+    double dipoleTerm = prefac*twoThirds*a2*dii_perm;
     double energy = chargeTerm + dipoleTerm;
 
     double volume = _computeBoxVolume();
@@ -1286,10 +1311,14 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
 
     double thole_c = 1.0, thole_d0 = 1.0, thole_d1 = 1.0;
     double dthole_c = 1.0, dthole_d0 = 1.0, dthole_d1 = 1.0;
+    double thole3 = 1.0, thole5 = 1.0;
+    double thole3_dr = 0.0, thole5_dr = 0.0;
     if (particleI.polarizability > 0 && particleJ.polarizability > 0) {
         computePmeTholeDampingFactors(r, particleI.polarizability, particleJ.polarizability,
                                       thole_c, thole_d0, thole_d1,
-                                      dthole_c, dthole_d0, dthole_d1);
+                                      dthole_c, dthole_d0, dthole_d1,
+                                      thole3, thole5,
+                                      thole3_dr, thole5_dr);
     }
 
     // For P-I energy, respect _dampPermanentInducedField flag
@@ -1319,17 +1348,28 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     double dIndEnergy = dIndErfc - (1.0 - mScale * thole_d0_pi) * dIndFull0 - (1.0 - mScale * thole_d1_pi) * dIndFull1;
 
     // Q-Ind: positive qIndEnergy = stabilizing, subtract to lower energy
-    pmeDirectEnergy += -0.5 * qIndEnergy * (_electric / _dielectric);
+    double qIndContrib = -0.5 * qIndEnergy * (_electric / _dielectric);
+    pmeDirectEnergy += qIndContrib;
     // D-Ind: negative dIndEnergy = stabilizing (tensor formula), add to lower energy
-    pmeDirectEnergy += 0.5 * dIndEnergy * (_electric / _dielectric);
+    double dIndContrib = 0.5 * dIndEnergy * (_electric / _dielectric);
+    pmeDirectEnergy += dIndContrib;
 
-    // Induced-induced energy: use iScale (with Thole damping for Mutual)
-    // Uses thole_d0 for 1/r³ term and thole_d1 for 1/r⁵ term
-    // Same tensor formula as D-Ind: negative = stabilizing
+    // NOTE: In the variational formulation, I-I energy is NOT explicitly included.
+    // It cancels with the polarization cost term. Only P-I energy (with 0.5 factor) is included.
     double indIndEnergyVal = 0.0;
-    if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
-        indIndEnergyVal = (thole_d0 * bn1) * uIuJ - (thole_d1 * bn2) * uIr * uJr;
-        pmeDirectEnergy += indIndEnergyVal * iScale * (_electric / _dielectric);
+    double indIndContrib = 0.0;
+
+    // Energy breakdown debug
+    double erfcPPContrib = erfcEnergy * (_electric / _dielectric);
+    double exclContrib = -(1.0 - mScale) * fullEnergy * (_electric / _dielectric);
+    if (iIndex == 0 && jIndex == 1) {
+        fprintf(stderr, "TD Direct (pair 0-1) r=%.4f mScale=%.0f:\n", r, mScale);
+        fprintf(stderr, "  erfcPP: %.4f kJ/mol\n", erfcPPContrib);
+        fprintf(stderr, "  exclCorr: %.4f kJ/mol\n", exclContrib);
+        fprintf(stderr, "  Q-Ind: %.4f kJ/mol (qIndEnergy=%.6f)\n", qIndContrib, qIndEnergy);
+        fprintf(stderr, "  D-Ind: %.4f kJ/mol (dIndEnergy=%.6f)\n", dIndContrib, dIndEnergy);
+        fprintf(stderr, "  I-I: %.4f kJ/mol (indIndEnergyVal=%.6f)\n", indIndContrib, indIndEnergyVal);
+        fprintf(stderr, "  Total direct pair: %.4f kJ/mol\n", pmeDirectEnergy);
     }
 
     // Force calculation: erfc-damped force terms (permanent multipoles)
@@ -1378,20 +1418,30 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
                                        + (uIdJ + uJdI) * rhat)
                                 - 15.0 * (muIr * uJr_bn + muJr * uIr_bn) * rhat);
 
-        // Induced-induced dipole (only for Mutual, scaled by iScale)
+        // Induced-induced dipole force (only for Mutual, scaled by iScale)
+        // Tensor force with thole3/thole5, plus damping derivative
         Vec3 indIndForce(0.0, 0.0, 0.0);
         if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
-            indIndForce += (dthole_d0 * bn2 * uIuJ + (2.0 * dthole_d1 * bn2 - r * r * bn3) * uIr_bn * uJr_bn) * deltaR;
-            indIndForce += dthole_d1 * bn2 * r * (uJr_bn * uI_perp + uIr_bn * uJ_perp);
+            // Tensor force - note bn3 term must also be scaled by thole5
+            indIndForce += (thole3 * bn2 * uIuJ + thole5 * (2.0 * bn2 - r * r * bn3) * uIr_bn * uJr_bn) * deltaR;
+            indIndForce += thole5 * bn2 * r * (uJr_bn * uI_perp + uIr_bn * uJ_perp);
+            // Damping derivative (chain rule from d(thole)/dr)
+            indIndForce += -bn1 * (thole3_dr * uIuJ - 3.0 * thole5_dr * uIr_bn * uJr_bn) * rhat;
             indForceTotal += iScale * indIndForce;
         }
 
         if (particleI.particleIndex == 0) {
+            // Compute tensor and damp parts separately for debug
+            double ii_tensor = (thole3 * bn2 * uIuJ + thole5 * (2.0 * bn2 - r * r * bn3) * uIr_bn * uJr_bn) * r;
+            double ii_damp = -bn1 * (thole3_dr * uIuJ - 3.0 * thole5_dr * uIr_bn * uJr_bn);
             fprintf(stderr, "PME Direct (pair 0-1) pol=%d:\n", (int)_polarizationType);
             fprintf(stderr, "  erfc P-P: [%.3f, 0, 0]\n", force[0]);
             fprintf(stderr, "  erfc C-I: [%.3f, 0, 0]\n", cIndForce[0]);
             fprintf(stderr, "  erfc D-I: [%.3f, 0, 0]\n", dIndForce[0]);
-            fprintf(stderr, "  erfc I-I: [%.3f, 0, 0]\n", indIndForce[0]);
+            fprintf(stderr, "  erfc I-I: [%.3f, 0, 0] (tensor=%.4f damp=%.4f)\n", indIndForce[0], ii_tensor, ii_damp);
+            fprintf(stderr, "  bn1=%.6f bn2=%.6f bn3=%.6f rInv3=%.6f\n", bn1, bn2, bn3, rInv3);
+            fprintf(stderr, "  thole3=%.6f thole5=%.6f thole3_dr=%.6f thole5_dr=%.6f\n", thole3, thole5, thole3_dr, thole5_dr);
+            fprintf(stderr, "  uIuJ=%.6f uIr_bn=%.6f uJr_bn=%.6f\n", uIuJ, uIr_bn, uJr_bn);
         }
     }
     force += indForceTotal;

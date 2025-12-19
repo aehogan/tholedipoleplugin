@@ -75,7 +75,7 @@ void testZOnlyNoDip() {
         cout << "AMOEBA context created successfully on platform: " << amoebaContext.getPlatform().getName() << endl;
         
         // Use compareForces for full AMOEBA comparison
-        compareForces("ZOnlyNoDip", system, amoebaSystem, positions, 0.01, 0.01);
+        compareForces("ZOnlyNoDip", system, amoebaSystem, positions, 1e-4, 1e-3);
     } catch (const std::exception& e) {
         cout << "Full AMOEBA comparison failed: " << e.what() << endl;
     }

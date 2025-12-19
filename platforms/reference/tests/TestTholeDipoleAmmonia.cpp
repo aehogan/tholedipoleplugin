@@ -3,25 +3,69 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * This tests TholeDipoleForce ammonia with NO polarization (zero polarizabilities)
- * to isolate permanent multipole interactions from induced dipole effects.
+ * Tests TholeDipoleForce with ammonia molecules for different polarization types.
  */
 
 #include "ReferenceTests.h"
 #include "TholeDipoleTestCommon.h"
 
-static void testTholeDipoleAmmoniaNoPolarization() {
-    std::string testName      = "testTholeDipoleAmmoniaNoPolarization";
+static void testAmmoniaWithPolarization(TholeDipoleForce::PolarizationType polType) {
+    std::string polName = (polType == TholeDipoleForce::Direct) ? "Direct" : "Mutual";
+    std::string testName = "testTholeDipoleAmmonia" + polName;
+    cout << "\n=== Testing Ammonia " << polName << " Polarization ===" << endl;
 
-    int numberOfParticles     = 8;
+    int numberOfParticles = 8;
+    int inputPmeGridDimension = 0;
+    double cutoff = 9000000.0;
 
-    // box
+    System tholeDipoleSystem;
+    TholeDipoleForce* tholeDipoleForce = new TholeDipoleForce();
+    setupTholeDipoleAmmonia(tholeDipoleSystem, tholeDipoleForce, TholeDipoleForce::NoCutoff, polType,
+                            cutoff, inputPmeGridDimension);
+
+    LangevinIntegrator tempIntegrator(0.0, 0.1, 0.01);
+    Context tempContext(tholeDipoleSystem, tempIntegrator, *platform);
+    std::vector<Vec3> forces;
+    double energy;
+    getForcesEnergyTholeDipoleAmmonia(tempContext, forces, energy);
+    std::vector<Vec3> positions = tempContext.getState(State::Positions).getPositions();
+
+    cout << "TholeDipole energy: " << energy << " kJ/mol" << endl;
+
+    ASSERT(std::isfinite(energy));
+    for (int i = 0; i < numberOfParticles; i++) {
+        ASSERT(std::isfinite(forces[i][0]));
+        ASSERT(std::isfinite(forces[i][1]));
+        ASSERT(std::isfinite(forces[i][2]));
+    }
+
+    System amoebaSystem;
+    for (int i = 0; i < numberOfParticles; i++)
+        amoebaSystem.addParticle(tholeDipoleSystem.getParticleMass(i));
+
+    Vec3 a, b, c;
+    tholeDipoleSystem.getDefaultPeriodicBoxVectors(a, b, c);
+    amoebaSystem.setDefaultPeriodicBoxVectors(a, b, c);
+
+    AmoebaMultipoleForce* amoebaForce = createEquivalentAmoebaForce(tholeDipoleForce);
+    amoebaForce->setNonbondedMethod(AmoebaMultipoleForce::NoCutoff);
+    amoebaForce->setPolarizationType(polType == TholeDipoleForce::Direct ?
+                                      AmoebaMultipoleForce::Direct : AmoebaMultipoleForce::Mutual);
+    amoebaSystem.addForce(amoebaForce);
+
+    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 1e-4, 1e-3);
+}
+
+static void testAmmoniaNoPolarization() {
+    std::string testName = "testTholeDipoleAmmoniaNoPolarization";
+    cout << "\n=== Testing Ammonia No Polarization (PME) ===" << endl;
+
+    int numberOfParticles = 8;
     double boxDimension = 2.0;
     Vec3 a(boxDimension, 0.0, 0.0);
     Vec3 b(0.0, boxDimension, 0.0);
     Vec3 c(0.0, 0.0, boxDimension);
 
-    // Create TholeDipole system
     System tholeDipoleSystem;
     tholeDipoleSystem.setDefaultPeriodicBoxVectors(a, b, c);
 
@@ -38,7 +82,6 @@ static void testTholeDipoleAmmoniaNoPolarization() {
     std::vector<double> nitrogenMolecularDipole = {0.0, 0.0, 3.4e-3};
     std::vector<double> hydrogenMolecularDipole = {0.0, 0.0, -4.7e-3};
 
-    // First ammonia: N + 3H with ZERO polarizability
     tholeDipoleSystem.addParticle(1.4007000e+01);
     tholeDipoleForce->addParticle(-5.7960000e-1, nitrogenMolecularDipole, 0.0, TholeDipoleForce::ThreeFold, 1, 2, 3);
 
@@ -49,7 +92,6 @@ static void testTholeDipoleAmmoniaNoPolarization() {
     tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 0.0, TholeDipoleForce::ZOnly, 0, -1, -1);
     tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 0.0, TholeDipoleForce::ZOnly, 0, -1, -1);
 
-    // Second ammonia: N + 3H with ZERO polarizability
     tholeDipoleSystem.addParticle(1.4007000e+01);
     tholeDipoleForce->addParticle(-5.796e-1, nitrogenMolecularDipole, 0.0, TholeDipoleForce::ThreeFold, 5, 6, 7);
 
@@ -60,7 +102,6 @@ static void testTholeDipoleAmmoniaNoPolarization() {
     tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 0.0, TholeDipoleForce::ZOnly, 4, -1, -1);
     tholeDipoleForce->addParticle(1.932e-1, hydrogenMolecularDipole, 0.0, TholeDipoleForce::ZOnly, 4, -1, -1);
 
-    // Covalent maps
     std::vector<int> covalentMap;
     covalentMap = {1, 2, 3};
     tholeDipoleForce->setCovalentMap(0, TholeDipoleForce::Covalent12, covalentMap);
@@ -94,7 +135,6 @@ static void testTholeDipoleAmmoniaNoPolarization() {
 
     tholeDipoleSystem.addForce(tholeDipoleForce);
 
-    // Positions
     std::vector<Vec3> positions(numberOfParticles);
     positions[0] = Vec3(  1.5927280e-01,  1.7000000e-06,   1.6491000e-03);
     positions[1] = Vec3(  2.0805540e-01, -8.1258800e-02,   3.7282500e-02);
@@ -105,7 +145,6 @@ static void testTholeDipoleAmmoniaNoPolarization() {
     positions[6] = Vec3( -6.7308300e-02,  1.2800000e-05,   1.0623300e-02);
     positions[7] = Vec3( -2.0426290e-01, -8.1231400e-02,   4.1033500e-02);
 
-    // Create equivalent AMOEBA system
     System amoebaSystem;
     amoebaSystem.setDefaultPeriodicBoxVectors(a, b, c);
     for (int i = 0; i < numberOfParticles; i++)
@@ -116,14 +155,15 @@ static void testTholeDipoleAmmoniaNoPolarization() {
     amoebaForce->setPolarizationType(AmoebaMultipoleForce::Direct);
     amoebaSystem.addForce(amoebaForce);
 
-    // Compare forces
-    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 0.01, 0.01);
+    compareForces(testName, tholeDipoleSystem, amoebaSystem, positions, 1e-4, 1e-3);
 }
 
 int main(int argc, char* argv[]) {
     try {
         setupKernels(argc, argv);
-        testTholeDipoleAmmoniaNoPolarization();
+        testAmmoniaWithPolarization(TholeDipoleForce::Direct);
+        testAmmoniaWithPolarization(TholeDipoleForce::Mutual);
+        testAmmoniaNoPolarization();
     }
     catch (const std::exception& e) {
         std::cout << "exception: " << e.what() << std::endl;

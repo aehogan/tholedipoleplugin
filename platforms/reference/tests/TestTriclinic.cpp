@@ -137,7 +137,7 @@ void testTriclinic() {
     amoebaForce->setPMEParameters(5.4459051633620055, 24, 24, 24);
     amoebaSystem.addForce(amoebaForce);
 
-    compareForces("testTriclinic", system, amoebaSystem, positions, 0.1, 0.1);
+    compareForces("testTriclinic", system, amoebaSystem, positions, 1e-4, 1e-3);
 }
 
 int main(int argc, char* argv[]) {

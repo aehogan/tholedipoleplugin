@@ -104,7 +104,7 @@ static const char* polName(TholeDipoleForce::PolarizationType p) {
 static void checkFiniteDifferences(const vector<Vec3>& analyticForces,
                                    Context& context,
                                    const vector<Vec3>& positions,
-                                   double tolerance = 1e-2) {
+                                   double tolerance = 1e-4) {
     double norm = 0.0;
     for (const auto& f : analyticForces)
         norm += f.dot(f);
@@ -226,7 +226,7 @@ static double runTest(TholeDipoleForce::TholeDampingType dampingType,
     }
 
     // Finite difference check
-    checkFiniteDifferences(forces, context, positions, 0.01);
+    checkFiniteDifferences(forces, context, positions, 1e-4);
 
     return energy;
 }
