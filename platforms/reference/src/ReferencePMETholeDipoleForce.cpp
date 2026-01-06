@@ -107,8 +107,8 @@ void ReferencePMETholeDipoleForce::setPeriodicBoxSize(OpenMM::Vec3* vectors)
 
 void ReferencePMETholeDipoleForce::resizePmeArrays()
 {
-    _totalGridSize = _pmeGridDimensions[0]*_pmeGridDimensions[1]*_pmeGridDimensions[2];
-    if ((int)_pmeGrid.size() < _totalGridSize) {
+    _totalGridSize = (size_t)_pmeGridDimensions[0]*_pmeGridDimensions[1]*_pmeGridDimensions[2];
+    if (_pmeGrid.size() < _totalGridSize) {
         _pmeGrid.resize(_totalGridSize);
     }
 
@@ -129,7 +129,7 @@ void ReferencePMETholeDipoleForce::initializePmeGrid()
     if (_pmeGrid.empty())
         return;
 
-    for (int jj = 0; jj < _totalGridSize; jj++)
+    for (size_t jj = 0; jj < _totalGridSize; jj++)
         _pmeGrid[jj] = complex<double>(0, 0);
 }
 
@@ -572,10 +572,10 @@ void ReferencePMETholeDipoleForce::spreadFixedMultipolesOntoGrid(const vector<Th
 
     const int order = THOLE_PME_ORDER;
 
-    for (int gridIndex = 0; gridIndex < _totalGridSize; gridIndex++)
+    for (size_t gridIndex = 0; gridIndex < _totalGridSize; gridIndex++)
         _pmeGrid[gridIndex] = complex<double>(0, 0);
 
-    for (int atomIndex = 0; atomIndex < _numParticles; atomIndex++) {
+    for (size_t atomIndex = 0; atomIndex < _numParticles; atomIndex++) {
         double atomCharge = _transformed[atomIndex].charge;
         Vec3 atomDipole = _transformed[atomIndex].dipole;
 
@@ -600,8 +600,8 @@ void ReferencePMETholeDipoleForce::spreadFixedMultipolesOntoGrid(const vector<Th
                     int zindex = (z0index + iz) % _pmeGridDimensions[2];
                     double4 tz = _thetai[2][atomIndex*order + iz];
 
-                    int index = xindex*_pmeGridDimensions[1]*_pmeGridDimensions[2] +
-                               yindex*_pmeGridDimensions[2] + zindex;
+                    size_t index = (size_t)xindex*_pmeGridDimensions[1]*_pmeGridDimensions[2] +
+                                   (size_t)yindex*_pmeGridDimensions[2] + zindex;
 
                     _pmeGrid[index] += term0*tz[0] + term1*tz[1];
                 }
@@ -637,7 +637,7 @@ double ReferencePMETholeDipoleForce::performPmeReciprocalConvolution()
             double by = _pmeBsplineModuli[1][ky];
 
             for (int kz = 0; kz < nz; kz++) {
-                int index = kx*ny*nz + ky*nz + kz;
+                size_t index = (size_t)kx*ny*nz + (size_t)ky*nz + kz;
 
                 if (kx == 0 && ky == 0 && kz == 0) {
                     _pmeGrid[index] = complex<double>(0, 0);
@@ -696,8 +696,8 @@ void ReferencePMETholeDipoleForce::computeFixedPotentialFromGrid()
 
                 for (int iz = 0; iz < order; iz++) {
                     int zindex = (z0index + iz) % _pmeGridDimensions[2];
-                    int index = xindex*_pmeGridDimensions[1]*_pmeGridDimensions[2] +
-                               yindex*_pmeGridDimensions[2] + zindex;
+                    size_t index = (size_t)xindex*_pmeGridDimensions[1]*_pmeGridDimensions[2] +
+                                   (size_t)yindex*_pmeGridDimensions[2] + zindex;
 
                     double gridvalue = _pmeGrid[index].real();
                     double4 tz = _thetai[2][m*order + iz];
@@ -767,7 +767,7 @@ void ReferencePMETholeDipoleForce::computeInducedPotentialFromGrid()
 
                 for (int ix = 0; ix < THOLE_PME_ORDER; ix++) {
                     int i = gridPoint[0]+ix-(gridPoint[0]+ix >= _pmeGridDimensions[0] ? _pmeGridDimensions[0] : 0);
-                    int gridIndex = i*_pmeGridDimensions[1]*_pmeGridDimensions[2] + j*_pmeGridDimensions[2] + k;
+                    size_t gridIndex = (size_t)i*_pmeGridDimensions[1]*_pmeGridDimensions[2] + (size_t)j*_pmeGridDimensions[2] + k;
                     double tq = _pmeGrid[gridIndex].real();
                     double4 tadd = _thetai[0][m*THOLE_PME_ORDER+ix];
                     t0 += tq*tadd[0];
@@ -1025,10 +1025,10 @@ void ReferencePMETholeDipoleForce::spreadInducedDipolesOnGrid(const vector<Vec3>
                 transformedDipoles[i][j] += a[j][k]*inputInducedDipole[i][k];
     }
 
-    for (int gridIndex = 0; gridIndex < _totalGridSize; gridIndex++)
+    for (size_t gridIndex = 0; gridIndex < _totalGridSize; gridIndex++)
         _pmeGrid[gridIndex] = complex<double>(0, 0);
 
-    for (int atomIndex = 0; atomIndex < _numParticles; atomIndex++) {
+    for (size_t atomIndex = 0; atomIndex < _numParticles; atomIndex++) {
         Vec3 atomDipole = transformedDipoles[atomIndex];
 
         IntVec& gridPoint = _iGrid[atomIndex];
@@ -1045,8 +1045,8 @@ void ReferencePMETholeDipoleForce::spreadInducedDipolesOnGrid(const vector<Vec3>
                 for (int iz = 0; iz < THOLE_PME_ORDER; iz++) {
                     int z = (gridPoint[2]+iz) % _pmeGridDimensions[2];
                     double4 v = _thetai[2][atomIndex*THOLE_PME_ORDER+iz];
-                    complex<double>& gridValue = _pmeGrid[x*_pmeGridDimensions[1]*_pmeGridDimensions[2]+y*_pmeGridDimensions[2]+z];
-                    gridValue += term0*v[0] + term1*v[1];
+                    size_t gridIdx = (size_t)x*_pmeGridDimensions[1]*_pmeGridDimensions[2] + (size_t)y*_pmeGridDimensions[2] + z;
+                    _pmeGrid[gridIdx] += term0*v[0] + term1*v[1];
                 }
             }
         }

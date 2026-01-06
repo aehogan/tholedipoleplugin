@@ -826,7 +826,7 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByPCG(
         for (int i = 0; i < n; ++i)
             p_dot_Ap += p[i].dot(Ap[i]);
 
-        if (fabs(p_dot_Ap) < 1e-16) break;
+        if (fabs(p_dot_Ap) < 1e-16) break;  // Degenerate direction; convergence check at loop exit
 
         double alpha_cg = r_dot_z / p_dot_Ap;
 
@@ -1329,17 +1329,15 @@ void ReferenceTholeDipoleForce::calculateTholeDipoleSystemMultipoleMoments(const
     outputMultipoleMoments[11] = outputMultipoleMoments[9];
 
     // Convert to appropriate units
-    double debye = 4.80321;
     outputMultipoleMoments[0] = netchg;
-    
-    dpl *= 10.0 * debye;
+
+    dpl *= 10.0 * DEBYE;
     outputMultipoleMoments[1] = dpl[0];
     outputMultipoleMoments[2] = dpl[1];
     outputMultipoleMoments[3] = dpl[2];
 
-    debye *= 3.0;
     for (unsigned int i = 4; i < 13; i++) {
-        outputMultipoleMoments[i] *= 100.0 * debye;
+        outputMultipoleMoments[i] *= 100.0 * 3.0 * DEBYE;
     }
 }
 

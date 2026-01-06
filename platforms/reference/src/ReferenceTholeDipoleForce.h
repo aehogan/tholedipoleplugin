@@ -392,6 +392,8 @@ protected:
     double _electric;
     double _dielectric;
 
+    static constexpr double DEBYE = 4.80321;  // Conversion factor: e·nm to Debye
+
     std::vector<std::vector<MapIntRealOpenMM>> _scaleMaps;
     std::vector<unsigned int> _maxScaleIndex;
     double _mScale[5];

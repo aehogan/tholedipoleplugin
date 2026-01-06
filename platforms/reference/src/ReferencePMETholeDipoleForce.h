@@ -77,7 +77,7 @@ private:
     Vec3 _recipBoxVectors[3];
     Vec3 _periodicBoxVectors[3];
 
-    int _totalGridSize;
+    size_t _totalGridSize;
     IntVec _pmeGridDimensions;
 
     std::vector<std::complex<double>> _pmeGrid;
