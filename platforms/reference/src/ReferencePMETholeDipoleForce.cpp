@@ -348,6 +348,7 @@ double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDi
 
     double recipEnergy = computeReciprocalSpaceFixedMultipoleForceAndEnergy(particleData, forces, torques);
     double selfEnergy = calculatePmeSelfEnergy(particleData);
+    calculatePmeSelfTorque(particleData, torques);
 
     // Compute induced dipole potential on grid for reciprocal force calculation
     initializePmeGrid();
@@ -1194,6 +1195,7 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
 {
     double cii = 0.0;
     double dii_perm = 0.0;
+    double dii_perm_ind_cross = 0.0;
     double totalCharge = 0.0;
 
     for (unsigned int ii = 0; ii < _numParticles; ii++) {
@@ -1203,9 +1205,7 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
         cii += particleI.charge*particleI.charge;
 
         dii_perm += particleI.dipole.dot(particleI.dipole);
-
-        // NOTE: In the variational formulation, I-I self-energy is NOT included
-        // (since we don't include I-I reciprocal energy, no self-correction needed)
+        dii_perm_ind_cross += particleI.dipole.dot(_inducedDipole[ii]);
     }
 
     double prefac = -_alphaEwald * _electric / (_dielectric*SQRT_PI);
@@ -1213,14 +1213,27 @@ double ReferencePMETholeDipoleForce::calculatePmeSelfEnergy(const vector<TholeDi
     double twoThirds = 2.0/3.0;
 
     double chargeTerm = prefac*cii;
-    double dipoleTerm = prefac*twoThirds*a2*dii_perm;
-    double energy = chargeTerm + dipoleTerm;
+    double permDipoleTerm = prefac*twoThirds*a2*dii_perm;
+    double crossTerm = prefac*twoThirds*a2*dii_perm_ind_cross;
 
     double volume = _computeBoxVolume();
     double plasmaTerm = totalCharge*totalCharge*M_PI*_electric/(2.0*_dielectric*volume*_alphaEwald*_alphaEwald);
-    energy -= plasmaTerm;
+
+    double energy = chargeTerm + permDipoleTerm + crossTerm - plasmaTerm;
 
     return energy;
+}
+
+void ReferencePMETholeDipoleForce::calculatePmeSelfTorque(const vector<TholeDipoleParticleData>& particleData,
+                                                          vector<Vec3>& torques) const
+{
+    double term = (2.0/3.0)*(_electric/_dielectric)*(_alphaEwald*_alphaEwald*_alphaEwald)/SQRT_PI;
+    for (unsigned int ii = 0; ii < _numParticles; ii++) {
+        const TholeDipoleParticleData& particleI = particleData[ii];
+        Vec3 ui = _inducedDipole[ii] * 2.0;
+        Vec3 torque = particleI.dipole.cross(ui) * term;
+        torques[ii] += torque;
+    }
 }
 
 double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
@@ -1426,22 +1439,10 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
             indIndForce += (thole3 * bn2 * uIuJ + thole5 * (2.0 * bn2 - r * r * bn3) * uIr_bn * uJr_bn) * deltaR;
             indIndForce += thole5 * bn2 * r * (uJr_bn * uI_perp + uIr_bn * uJ_perp);
             // Damping derivative (chain rule from d(thole)/dr)
-            indIndForce += -bn1 * (thole3_dr * uIuJ - 3.0 * thole5_dr * uIr_bn * uJr_bn) * rhat;
+            // Use rInv3 (not bn1) because Thole damping multiplies the FULL Coulomb
+            // interaction, not just the erfc (direct space) part
+            indIndForce += -rInv3 * (thole3_dr * uIuJ - 3.0 * thole5_dr * uIr_bn * uJr_bn) * rhat;
             indForceTotal += iScale * indIndForce;
-        }
-
-        if (particleI.particleIndex == 0) {
-            // Compute tensor and damp parts separately for debug
-            double ii_tensor = (thole3 * bn2 * uIuJ + thole5 * (2.0 * bn2 - r * r * bn3) * uIr_bn * uJr_bn) * r;
-            double ii_damp = -bn1 * (thole3_dr * uIuJ - 3.0 * thole5_dr * uIr_bn * uJr_bn);
-            fprintf(stderr, "PME Direct (pair 0-1) pol=%d:\n", (int)_polarizationType);
-            fprintf(stderr, "  erfc P-P: [%.3f, 0, 0]\n", force[0]);
-            fprintf(stderr, "  erfc C-I: [%.3f, 0, 0]\n", cIndForce[0]);
-            fprintf(stderr, "  erfc D-I: [%.3f, 0, 0]\n", dIndForce[0]);
-            fprintf(stderr, "  erfc I-I: [%.3f, 0, 0] (tensor=%.4f damp=%.4f)\n", indIndForce[0], ii_tensor, ii_damp);
-            fprintf(stderr, "  bn1=%.6f bn2=%.6f bn3=%.6f rInv3=%.6f\n", bn1, bn2, bn3, rInv3);
-            fprintf(stderr, "  thole3=%.6f thole5=%.6f thole3_dr=%.6f thole5_dr=%.6f\n", thole3, thole5, thole3_dr, thole5_dr);
-            fprintf(stderr, "  uIuJ=%.6f uIr_bn=%.6f uJr_bn=%.6f\n", uIuJ, uIr_bn, uJr_bn);
         }
     }
     force += indForceTotal;

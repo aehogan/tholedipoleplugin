@@ -175,6 +175,7 @@ private:
     void spreadInducedDipolesOnGrid(const vector<Vec3>& inputInducedDipole);
     void recordInducedDipoleField(vector<Vec3>& field);
     double calculatePmeSelfEnergy(const vector<TholeDipoleParticleData>& particleData) const;
+    void calculatePmeSelfTorque(const vector<TholeDipoleParticleData>& particleData, vector<Vec3>& torques) const;
     double calculatePmeDirectElectrostaticPairIxn(const TholeDipoleParticleData& particleI,
                                                   const TholeDipoleParticleData& particleJ,
                                                   double mScale, double iScale,
