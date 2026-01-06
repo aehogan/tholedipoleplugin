@@ -6,32 +6,18 @@
 SET(INDIVIDUAL_TESTS
     TholeDipoleAmmonia
     TholeDipoleWaterPME
-    ParticleInducedDipoles
-    ParticleLabFramePermanentDipoles
-    ParticleTotalDipoles
     Triclinic
-    ZBisect
-    ZOnly3Particle
-    ZOnlyNoDipNoPol
-    ZOnlyNoDip
-    ZOnlyNoPol
-    ZOnly
-    ZOnlyMutual
-    ZeroCharges
-    ZeroDipoles
-    ZeroPolarizabilities
-    AllZeros
     SingleParticle
     SingleWater
-    ZThenX
     TwoPointCharges
     1DChainSizeConsistency
     PMECutoffConvergence
-    Bisector
-    NoAxisType
-    ThreeFold
     CustomPointCharges
     TwoDipoles
+    ZOnly
+    EdgeCases
+    AxisTypes
+    ParticleAccessors
 )
 
 FOREACH(TEST_NAME ${INDIVIDUAL_TESTS})
