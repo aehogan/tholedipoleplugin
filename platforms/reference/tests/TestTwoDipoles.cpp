@@ -134,7 +134,7 @@ void testChargesOnly() {
                      Vec3(0.2, 0.2, 0.2),    // pos 0
                      Vec3(0.5, 0.2, 0.2),    // pos 1
                      1.5,                     // box size
-                     0.15, 0.1);              // tolerances (energy, force)
+                     1e-4, 1e-3);             // tolerances (energy, force)
 }
 
 // Test B-spline computation for comparison
@@ -313,7 +313,7 @@ void testDipolesAlongAxis() {
                      Vec3(0.2, 0.5, 0.5),     // pos 0
                      Vec3(0.5, 0.5, 0.5),     // pos 1 (separated along x)
                      1.5,                      // box size
-                     0.01, 0.1);               // tolerances
+                     1e-4, 1e-3);              // tolerances
 }
 
 void testChargesAndDipoles() {
@@ -324,7 +324,7 @@ void testChargesAndDipoles() {
                      Vec3(0.2, 0.5, 0.5),     // pos 0
                      Vec3(0.5, 0.5, 0.5),     // pos 1 (separated along x)
                      1.5,                      // box size
-                     0.01, 1.0);               // tolerances (relaxed for now)
+                     1e-4, 1e-3);              // tolerances
 }
 
 void testChargesAndDipolesWithAxisType() {
@@ -397,7 +397,7 @@ void testChargesAndDipolesWithAxisType() {
     }
 
     double energyDiff = fabs(tholeState.getPotentialEnergy() - amoebaState.getPotentialEnergy());
-    ASSERT_EQUAL_TOL(tholeState.getPotentialEnergy(), amoebaState.getPotentialEnergy(), 0.01);
+    ASSERT_EQUAL_TOL(tholeState.getPotentialEnergy(), amoebaState.getPotentialEnergy(), 1e-4);
 }
 
 void testDipolesPerpendicularToAxis() {
@@ -408,7 +408,7 @@ void testDipolesPerpendicularToAxis() {
                      Vec3(0.2, 0.5, 0.5),     // pos 0
                      Vec3(0.5, 0.5, 0.5),     // pos 1 (separated along x)
                      1.5,                      // box size
-                     0.01, 0.1);               // tolerances
+                     1e-4, 1e-3);              // tolerances
 }
 
 void testDipolesOpposite() {
@@ -419,7 +419,7 @@ void testDipolesOpposite() {
                      Vec3(0.2, 0.5, 0.5),     // pos 0
                      Vec3(0.5, 0.5, 0.5),     // pos 1 (separated along x)
                      1.5,                      // box size
-                     0.01, 0.1);               // tolerances
+                     1e-4, 1e-3);              // tolerances
 }
 
 void testChargeDipoleInteraction() {
@@ -430,7 +430,7 @@ void testChargeDipoleInteraction() {
                      Vec3(0.2, 0.5, 0.5),     // pos 0
                      Vec3(0.5, 0.5, 0.5),     // pos 1 (separated along x)
                      1.5,                      // box size
-                     0.01, 0.1);               // tolerances
+                     1e-4, 1e-3);              // tolerances
 }
 
 void testMixedChargeAndDipole() {

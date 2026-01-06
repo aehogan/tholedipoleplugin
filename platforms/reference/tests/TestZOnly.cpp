@@ -129,7 +129,7 @@ void testZOnlyNoDipoleNoPolarization() {
     const vector<Vec3>& forces = state.getForces();
 
     // Pure Coulomb: E = k*q1*q2/r = 138.935*0.5*(-0.5)/0.3 = -115.78 kJ/mol
-    ASSERT_EQUAL_TOL(energy, -115.78, 1.0);
+    ASSERT_EQUAL_TOL(energy, -115.78, 1e-3);
 
     // Forces should be non-zero and equal/opposite
     ASSERT(fabs(forces[0][2]) > 1e-6);

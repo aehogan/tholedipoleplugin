@@ -74,7 +74,7 @@ void testInducedDipolesExtrapolated() {
         Vec3 diff = tholeDipole[i] - amoebaDipole[i];
         maxDiff = std::max(maxDiff, sqrt(diff.dot(diff)));
     }
-    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e+1);
+    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e-4);
 }
 
 void testInducedDipolesMutual() {
@@ -112,7 +112,7 @@ void testInducedDipolesMutual() {
         Vec3 diff = tholeDipole[i] - amoebaDipole[i];
         maxDiff = std::max(maxDiff, sqrt(diff.dot(diff)));
     }
-    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e+1);
+    ASSERT_EQUAL_TOL(0.0, maxDiff, 1e-4);
 }
 
 void testLabFramePermanentDipoles() {

@@ -263,7 +263,7 @@ void testNoPolarization() {
     cout << "  Diff:   " << (energy - mpmc_energy) << " kJ/mol" << endl;
 
     ASSERT(energy < 0.0);
-    ASSERT_EQUAL_TOL(energy, mpmc_energy, 0.01);
+    ASSERT_EQUAL_TOL(energy, mpmc_energy, 1e-3);
     cout << "  PASSED" << endl;
 }
 
