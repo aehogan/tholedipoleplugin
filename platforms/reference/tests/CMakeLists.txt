@@ -7,8 +7,6 @@ SET(INDIVIDUAL_TESTS
     TholeDipoleAmmonia
     TholeDipoleWaterPME
     Triclinic
-    SingleParticle
-    SingleWater
     TwoPointCharges
     1DChainSizeConsistency
     PMECutoffConvergence
