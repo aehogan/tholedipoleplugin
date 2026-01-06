@@ -13,61 +13,20 @@ using std::vector;
 
 class IntVec {
 public:
-    IntVec() {
-        data[0] = data[1] = data[2] = 0;
-    }
-    IntVec(int x, int y, int z) {
-        data[0] = x;
-        data[1] = y;
-        data[2] = z;
-    }
-    int operator[](int index) const {
-        return data[index];
-    }
-    int& operator[](int index) {
-        return data[index];
-    }
+    IntVec() : data{0, 0, 0} {}
+    IntVec(int x, int y, int z) : data{x, y, z} {}
+    int operator[](int i) const { return data[i]; }
+    int& operator[](int i) { return data[i]; }
 private:
     int data[3];
 };
 
 class double4 {
 public:
-    double4() {
-        data[0] = data[1] = data[2] = data[3] = 0.0;
-    }
-    double4(double x, double y, double z, double w) {
-        data[0] = x;
-        data[1] = y;
-        data[2] = z;
-        data[3] = w;
-    }
-    double operator[](int index) const {
-        return data[index];
-    }
-    double& operator[](int index) {
-        return data[index];
-    }
-    double4 operator+(const double4& rhs) const {
-        return double4(data[0] + rhs[0], data[1] + rhs[1], data[2] + rhs[2], data[3] + rhs[3]);
-    }
-    double4& operator+=(const double4& rhs) {
-        data[0] += rhs[0];
-        data[1] += rhs[1];
-        data[2] += rhs[2];
-        data[3] += rhs[3];
-        return *this;
-    }
-    double4& operator-=(const double4& rhs) {
-        data[0] -= rhs[0];
-        data[1] -= rhs[1];
-        data[2] -= rhs[2];
-        data[3] -= rhs[3];
-        return *this;
-    }
-    double4 operator*(double rhs) const {
-        return double4(data[0]*rhs, data[1]*rhs, data[2]*rhs, data[3]*rhs);
-    }
+    double4() : data{0, 0, 0, 0} {}
+    double4(double x, double y, double z, double w) : data{x, y, z, w} {}
+    double operator[](int i) const { return data[i]; }
+    double& operator[](int i) { return data[i]; }
 private:
     double data[4];
 };
@@ -92,7 +51,7 @@ public:
     const vector<IntVec>& getIGrid() const { return _iGrid; }
     const vector<double>& getPhi() const { return _phi; }
     const vector<double>& getPhid() const { return _phid; }
-    const std::complex<double>* getPmeGrid() const { return _pmeGrid; }
+    const std::complex<double>* getPmeGrid() const { return _pmeGrid.data(); }
     int getTotalGridSize() const { return _totalGridSize; }
     const vector<TholeDipoleParticleData>& getTransformed() const { return _transformed; }
     double getFixedMultipoleRecipEnergy() const { return _fixedMultipoleRecipEnergy; }
@@ -121,8 +80,7 @@ private:
     int _totalGridSize;
     IntVec _pmeGridDimensions;
 
-    unsigned int _pmeGridSize;
-    std::complex<double>* _pmeGrid;
+    std::vector<std::complex<double>> _pmeGrid;
 
     vector<double> _pmeBsplineModuli[3];
     vector<double4> _thetai[3];
@@ -148,11 +106,12 @@ private:
 
     void resizePmeArrays();
     void initializePmeGrid();
+    void performFFT(bool forward);
     void getPeriodicDelta(Vec3& deltaR) const;
     void initializeBSplineModuli();
     void calculateFixedDipoleFieldPairIxn(const TholeDipoleParticleData& particleI,
                                           const TholeDipoleParticleData& particleJ,
-                                          double mScale, double iScale);
+                                          double mScale);
     void computeBSplinePoint(double* data, double* ddata, double* d2data, double* d3data, double w, int order);
     void updateGridIndexAndFraction(const vector<TholeDipoleParticleData>& particleData);
     void computePmeBSplines(const vector<TholeDipoleParticleData>& particleData);
@@ -180,12 +139,6 @@ private:
                                                   const TholeDipoleParticleData& particleJ,
                                                   double mScale, double iScale,
                                                   vector<Vec3>& forces, vector<Vec3>& torques) const;
-
-    void computePmeTholeDampingFactors(double r, double polarizabilityI, double polarizabilityJ,
-                                       double& thole_c, double& thole_d0, double& thole_d1,
-                                       double& dthole_c, double& dthole_d0, double& dthole_d1,
-                                       double& thole3, double& thole5,
-                                       double& thole3_dr, double& thole5_dr) const;
 
 };
 

@@ -25,7 +25,6 @@ void ReferenceTholeDipoleForce::initialize() {
     _mutualInducedDipoleEpsilon = 1.0e+50;
     _mutualInducedDipoleConverged = 0;
     _mutualInducedDipoleIterations = 0;
-    _debye = 0.4803;
     _tholeDampingType = TholeDipoleForce::Amoeba;  // Default to Amoeba (ρ₂)
     _tholeDampingParameter = 0.39;  // Default Thole damping parameter
     _dampPermanentInducedField = true;  // Default: apply damping to permanent->induced field
@@ -421,17 +420,11 @@ void ReferenceTholeDipoleForce::loadParticleData(const vector<Vec3>& particlePos
 }
 
 void ReferenceTholeDipoleForce::zeroFixedDipoleFields() {
-    _fixedDipoleField.resize(_numParticles);
-    for (unsigned int i = 0; i < _numParticles; i++) {
-        _fixedDipoleField[i] = Vec3(0.0, 0.0, 0.0);
-    }
+    initializeVec3Vector(_fixedDipoleField);
 }
 
 void ReferenceTholeDipoleForce::initializeVec3Vector(vector<Vec3>& vec3Vector) const {
-    vec3Vector.resize(_numParticles);
-    for (unsigned int i = 0; i < _numParticles; i++) {
-        vec3Vector[i] = Vec3(0.0, 0.0, 0.0);
-    }
+    vec3Vector.assign(_numParticles, Vec3(0.0, 0.0, 0.0));
 }
 
 void ReferenceTholeDipoleForce::checkChiralCenterAtParticle(TholeDipoleParticleData& particleI, 
@@ -586,17 +579,11 @@ void ReferenceTholeDipoleForce::setupScaleMaps(const vector<vector<vector<int>>>
 
     for (unsigned int i = 0; i < _numParticles; i++) {
         for (int t = TholeDipoleForce::Covalent12; t <= TholeDipoleForce::Covalent15; t++) {
-            const vector<int>& mList = multipoleCovalentInfo[i][t];
-            const vector<int>& iList = multipoleCovalentInfo[i][t];
+            const vector<int>& covalentList = multipoleCovalentInfo[i][t];
 
-            for (int atom : mList) {
+            for (int atom : covalentList) {
                 if (atom >= 0) {
-                    _scaleMaps[M_SCALE][i][atom] = _mScale[t];  // t = 0,1,2,3
-                    if (atom > _maxScaleIndex[i]) _maxScaleIndex[i] = atom;
-                }
-            }
-            for (int atom : iList) {
-                if (atom >= 0) {
+                    _scaleMaps[M_SCALE][i][atom] = _mScale[t];
                     _scaleMaps[I_SCALE][i][atom] = _iScale[t];
                     if (atom > _maxScaleIndex[i]) _maxScaleIndex[i] = atom;
                 }
@@ -617,7 +604,7 @@ double ReferenceTholeDipoleForce::getScaleFactor(unsigned int particleI, unsigne
 void ReferenceTholeDipoleForce::calculateFixedDipoleFieldPairIxn(
     const TholeDipoleParticleData& particleI,
     const TholeDipoleParticleData& particleJ,
-    double mScale, double iScale) {
+    double mScale) {
 
     if (particleI.particleIndex == particleJ.particleIndex) {
         return;
@@ -673,14 +660,12 @@ void ReferenceTholeDipoleForce::calculateFixedDipoleField(
     for (unsigned int i = 0; i < _numParticles; i++) {
         for (unsigned int j = i + 1; j < _numParticles; j++) {
             double mScale = 1.0;
-            double iScale = 1.0;
 
             // Get scaling factors if within cutoff
             if (j <= _maxScaleIndex[i]) {
                 mScale = getScaleFactor(i, j, M_SCALE);
-                iScale = getScaleFactor(i, j, I_SCALE);
             }
-            calculateFixedDipoleFieldPairIxn(particleData[i], particleData[j], mScale, iScale);
+            calculateFixedDipoleFieldPairIxn(particleData[i], particleData[j], mScale);
         }
     }
 }
@@ -806,49 +791,21 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByPCG(
     const double tol = _mutualInducedDipoleTargetEpsilon;
     const int n = _numParticles;
 
-    // Allocate working vectors
-    vector<Vec3> r(n);          // residual
-    vector<Vec3> z(n);          // preconditioned residual
-    vector<Vec3> p(n);          // search direction
-    vector<Vec3> Ap(n);         // A * p
-    vector<Vec3> inducedDipoleField(n);
+    vector<Vec3> r(n), z(n), p(n), Ap(n), inducedDipoleField(n);
 
-    // Initial guess is already in _inducedDipole (from direct term)
-
-    // Compute initial residual: r = b - A * mu
-    // where b = alpha * E_fixed, and A*mu = alpha * (E_fixed + E_induced(mu)) - alpha*E_induced(mu) ??? 
-    // Simpler: define residual as:
-    //   r = alpha * (E_fixed + E_induced(mu)) - mu
-    // because at convergence: mu = alpha*(E_fixed + E_induced(mu)) → r = 0
-
+    // Initial residual: r = α*(E_fixed + E_induced) - μ
     calculateInducedDipoleFields(particleData, _inducedDipole, inducedDipoleField);
     double r_dot_z = 0.0;
     for (int i = 0; i < n; ++i) {
-        Vec3 E_total = _fixedDipoleField[i] + inducedDipoleField[i];
-        Vec3 b = particleData[i].polarizability * E_total;
-        r[i] = b - _inducedDipole[i];  // residual
-
-        // Diagonal preconditioner: M_ii = 1 (since system is mu = alpha*(...), precondition with 1/alpha is natural)
-        // But better: use M^{-1} = 1 / (1 + alpha * T_ii) ≈ 1, or simply M = I.
-        // However, a common choice is to precondition with polarizability:
-        //   z = r / (1.0)  → no preconditioning
-        // OR: since mu_i ≈ alpha_i * E_i, scale by alpha_i
-        // We'll use diagonal preconditioner: z_i = r_i / (1.0) → identity (simplest)
-        // But for better convergence, use: z_i = r_i * (1.0 / (1.0 - 0))? Not helpful.
-        // Instead, note: the diagonal of A is ~1/alpha_i in some formulations.
-        // Here, we precondition by polarizability: z = r * (1.0 / alpha_i) if alpha_i > 0
+        Vec3 b = particleData[i].polarizability * (_fixedDipoleField[i] + inducedDipoleField[i]);
+        r[i] = b - _inducedDipole[i];
         double alpha_i = particleData[i].polarizability;
-        if (alpha_i > 1e-12) {
-            z[i] = r[i] / alpha_i;
-        } else {
-            z[i] = Vec3(0.0, 0.0, 0.0);
-        }
+        z[i] = (alpha_i > 1e-12) ? r[i] / alpha_i : Vec3(0.0, 0.0, 0.0);
         p[i] = z[i];
         r_dot_z += r[i].dot(z[i]);
     }
 
-    double epsilon = sqrt(r_dot_z / (3.0 * n)); // 3 components per particle
-
+    double epsilon = sqrt(r_dot_z / (3.0 * n));
     if (epsilon <= tol) {
         _mutualInducedDipoleConverged = 1;
         _mutualInducedDipoleIterations = 0;
@@ -860,41 +817,27 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByPCG(
          _mutualInducedDipoleIterations < maxIter;
          _mutualInducedDipoleIterations++) {
 
-        // Compute Ap = A * p
-        // A*p = p - alpha * T * p   → but easier: 
-        // Since A mu = mu - alpha*(E_induced_from_mu)
-        // So A p = p - alpha * E_induced(p)
-        calculateInducedDipoleFields(particleData, p, Ap); // Ap_temp = T * p
-        for (int i = 0; i < n; ++i) {
-            // A*p = p - alpha_i * (T * p)_i
+        // Ap = p - α * E_induced(p)
+        calculateInducedDipoleFields(particleData, p, Ap);
+        for (int i = 0; i < n; ++i)
             Ap[i] = p[i] - particleData[i].polarizability * Ap[i];
-        }
 
-        // Compute alpha_cg = (r^T z) / (p^T A p)
         double p_dot_Ap = 0.0;
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < n; ++i)
             p_dot_Ap += p[i].dot(Ap[i]);
-        }
 
-        if (fabs(p_dot_Ap) < 1e-16) break; // avoid division by zero
+        if (fabs(p_dot_Ap) < 1e-16) break;
 
         double alpha_cg = r_dot_z / p_dot_Ap;
 
-        // Update solution: mu = mu + alpha_cg * p
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < n; ++i)
             _inducedDipole[i] += alpha_cg * p[i];
-        }
 
-        // Update residual: r = r - alpha_cg * A p
         double r_new_dot_z_new = 0.0;
         for (int i = 0; i < n; ++i) {
             r[i] -= alpha_cg * Ap[i];
             double alpha_i = particleData[i].polarizability;
-            if (alpha_i > 1e-12) {
-                z[i] = r[i] / alpha_i;
-            } else {
-                z[i] = Vec3(0.0, 0.0, 0.0);
-            }
+            z[i] = (alpha_i > 1e-12) ? r[i] / alpha_i : Vec3(0.0, 0.0, 0.0);
             r_new_dot_z_new += r[i].dot(z[i]);
         }
 
@@ -905,14 +848,11 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByPCG(
             return;
         }
 
-        // Compute beta = (r_new^T z_new) / (r^T z)
         double beta = r_new_dot_z_new / r_dot_z;
         r_dot_z = r_new_dot_z_new;
 
-        // Update search direction: p = z + beta * p
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < n; ++i)
             p[i] = z[i] + beta * p[i];
-        }
     }
 
     _mutualInducedDipoleEpsilon = epsilon;

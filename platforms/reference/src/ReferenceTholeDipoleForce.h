@@ -1,29 +1,3 @@
-/* -------------------------------------------------------------------------- *
- *                            OpenMMTholeDipole                               *
- * -------------------------------------------------------------------------- *
- * This is part of the OpenMM molecular simulation toolkit originating from   *
- * Simbios, the NIH National Center for Physics-Based Simulation of           *
- * Biological Structures at Stanford, funded under the NIH Roadmap for        *
- * Medical Research, grant U54 GM072970. See https://simtk.org.               *
- *                                                                            *
- * Portions copyright (c) 2024 Stanford University and the Authors.           *
- * Authors:                                                                   *
- * Contributors:                                                              *
- *                                                                            *
- * This program is free software: you can redistribute it and/or modify       *
- * it under the terms of the GNU Lesser General Public License as published   *
- * by the Free Software Foundation, either version 3 of the License, or       *
- * (at your option) any later version.                                        *
- *                                                                            *
- * This program is distributed in the hope that it will be useful,            *
- * but WITHOUT ANY WARRANTY; without even the implied warranty of             *
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *
- * GNU Lesser General Public License for more details.                        *
- *                                                                            *
- * You should have received a copy of the GNU Lesser General Public License   *
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.      *
- * -------------------------------------------------------------------------- */
-
 #ifndef __ReferenceTholeDipoleForce_H__
 #define __ReferenceTholeDipoleForce_H__
 
@@ -432,7 +406,6 @@ protected:
     std::vector<double> _extrapolationCoefficients;
     double _mutualInducedDipoleEpsilon;
     double _mutualInducedDipoleTargetEpsilon;
-    double _debye;
     double _tholeDampingParameter;
     bool _dampPermanentInducedField;
 
@@ -518,19 +491,18 @@ protected:
 
     /**
      * Calculate field at particle I due to fixed dipole at particle J and vice versa.
-     * 
+     *
      * @param particleI       particle I data
      * @param particleJ       particle J data
      * @param mScale          m-scale factor for this interaction
-     * @param iScale          i-scale factor for this interaction
      */
     virtual void calculateFixedDipoleFieldPairIxn(const TholeDipoleParticleData& particleI,
                                                    const TholeDipoleParticleData& particleJ,
-                                                   double mScale, double iScale);
+                                                   double mScale);
 
     /**
-     * Converge induced dipoles using DIIS for mutual polarization.
-     * 
+     * Converge induced dipoles using Preconditioned Conjugate Gradient (PCG) for mutual polarization.
+     *
      * @param particleData      vector of particle positions and parameters
      */
     virtual void convergeInducedDipolesByPCG(const std::vector<TholeDipoleParticleData>& particleData);
