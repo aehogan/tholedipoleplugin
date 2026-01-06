@@ -885,16 +885,11 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
         inducedDipole[1] = _inducedDipole[i][0]*cartToFrac[1][0] + _inducedDipole[i][1]*cartToFrac[1][1] + _inducedDipole[i][2]*cartToFrac[1][2];
         inducedDipole[2] = _inducedDipole[i][0]*cartToFrac[2][0] + _inducedDipole[i][1]*cartToFrac[2][1] + _inducedDipole[i][2]*cartToFrac[2][2];
 
-        // P-I reciprocal energy: μ_ind · E_perm_recip
+        // P-I reciprocal energy (I-I cancels with polarization cost)
         energy += inducedDipole[0]*_phi[10*i+1] + inducedDipole[1]*_phi[10*i+2] + inducedDipole[2]*_phi[10*i+3];
 
-        // NOTE: In the variational formulation, I-I reciprocal energy is NOT included
-        // (it cancels with the polarization cost term, same as I-I direct energy)
-
-        // Torque on permanent dipoles from induced potential
+        // Torque on permanent dipoles from induced potential (1.0 factor: we spread μ, not d+p=2μ)
         const double* phi = &cphid[10*i];
-        // Use 1.0 instead of 0.5 because TholeDipole spreads only μ on grid (1×)
-        // while AMOEBA spreads d+p=2μ (2×), so AMOEBA's 0.5×(2μ×E) = our 1.0×(μ×E)
         torques[i][0] += 1.0*_electric*(particleData[i].dipole[2]*phi[2] - particleData[i].dipole[1]*phi[3]);
         torques[i][1] += 1.0*_electric*(particleData[i].dipole[0]*phi[3] - particleData[i].dipole[2]*phi[1]);
         torques[i][2] += 1.0*_electric*(particleData[i].dipole[1]*phi[1] - particleData[i].dipole[0]*phi[2]);
@@ -918,8 +913,7 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
             f_ind[2] += 2.0*inducedDipole[k]*_phi[10*i+j3];
         }
 
-        // I-I reciprocal force IS needed for energy-force consistency in the variational formulation
-        // (even though I-I reciprocal energy is not explicitly included)
+        // I-I reciprocal force needed for consistency (energy cancels with polarization cost)
         if (_polarizationType == Mutual) {
             for (int k = 0; k < 3; k++) {
                 int j1 = deriv1[k+1];
@@ -1158,30 +1152,23 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     double qIdJr = particleI.charge * dJr;
     double qJdIr = particleJ.charge * dIr;
 
-    // erfc-damped energy components (short-range, computed in direct space)
+    // erfc-damped energy (short-range)
     double erfcCC = bn0 * qIqJ;
     double erfcCD = bn1 * (qJdIr - qIdJr);
     double erfcDD = bn1 * dIdJ - bn2 * dIr * dJr;
     double erfcEnergy = erfcCC + erfcCD + erfcDD;
 
-    // For excluded pairs (mScale < 1), we need to subtract the erf (reciprocal) contribution
-    // that was incorrectly included in reciprocal space.
-    // Full Coulomb = erfc + erf, so erf = full - erfc
-    // The undamped (full Coulomb) interaction terms:
+    // Full Coulomb for excluded pair correction: PME direct = erfc - (1-mScale)*full
     double rInv = 1.0 / r;
     double rInv2 = rInv * rInv;
     double rInv3 = rInv2 * rInv;
     double rInv4 = rInv2 * rInv2;
     double rInv5 = rInv3 * rInv2;
-    // Full Coulomb energy components
     double fullCC = rInv * qIqJ;
     double fullCD = rInv3 * (qJdIr - qIdJr);
     double fullDD = rInv3 * dIdJ - 3.0 * rInv3 * rInv2 * dIr * dJr;
     double fullEnergy = fullCC + fullCD + fullDD;
 
-    // PME direct energy = mScale * erfc - (1-mScale) * erf
-    //                   = mScale * erfc - (1-mScale) * (full - erfc)
-    //                   = erfc - (1-mScale) * full
     double pmeDirectEnergy = (erfcEnergy - (1.0 - mScale) * fullEnergy) * (_electric / _dielectric);
 
     Vec3 rhat = deltaR / r;
@@ -1230,41 +1217,25 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
         }
     }
 
-    // For P-I energy, respect _dampPermanentInducedField flag
+    // P-I Thole damping (if enabled)
     double thole_c_pi = _dampPermanentInducedField ? thole_c : 1.0;
     double thole_d0_pi = _dampPermanentInducedField ? thole_d0 : 1.0;
     double thole_d1_pi = _dampPermanentInducedField ? thole_d1 : 1.0;
 
-    // Permanent-induced energy (charge-induced, perm_dipole-induced): use mScale
-    // Factor of 0.5 for variational/linear response formulation: E_pol = -0.5 * μ_ind · E_perm
-    // PME direct space uses: Thole_damped_undamped + (erfc_damped - undamped)
-    //                      = thole_c/r^n + bn - 1/r^n = bn - (1-thole_c)/r^n
-
-    // Charge-induced: C-Ind interaction goes like q * (μ·r) / r³
-    // For PME with Thole damping:
-    //   Non-excluded pairs: erfc + (thole - 1) * full = erfc - (1 - thole) * full
-    //   Excluded pairs: erfc - full
-    //   Combined: erfc - (1 - mScale * thole) * full
+    // Charge-induced energy: erfc - (1 - mScale*thole)*full
     double qIndErfc = bn1 * (particleI.charge * uJr - particleJ.charge * uIr);
     double qIndFull = rInv3 * (particleI.charge * uJr - particleJ.charge * uIr);
     double qIndEnergy = qIndErfc - (1.0 - mScale * thole_c_pi) * qIndFull;
 
-    // Dipole-induced: D-Ind interaction has both 1/r³ and 1/r⁵ terms
-    // Use separate Thole damping for each term (thole_d0 for 1/r³, thole_d1 for 1/r⁵)
+    // Dipole-induced energy (separate Thole for 1/r³ and 1/r⁵ terms)
     double dIndErfc = bn1 * (uIdJ + uJdI) - bn2 * (dIr * uJr + dJr * uIr);
-    double dIndFull0 = rInv3 * (uIdJ + uJdI);  // 1/r³ term
-    double dIndFull1 = -3.0 * rInv5 * (dIr * uJr + dJr * uIr);  // 1/r⁵ term
+    double dIndFull0 = rInv3 * (uIdJ + uJdI);
+    double dIndFull1 = -3.0 * rInv5 * (dIr * uJr + dJr * uIr);
     double dIndEnergy = dIndErfc - (1.0 - mScale * thole_d0_pi) * dIndFull0 - (1.0 - mScale * thole_d1_pi) * dIndFull1;
 
-    // Q-Ind: positive qIndEnergy = stabilizing, subtract to lower energy
-    double qIndContrib = -0.5 * qIndEnergy * (_electric / _dielectric);
-    pmeDirectEnergy += qIndContrib;
-    // D-Ind: negative dIndEnergy = stabilizing (tensor formula), add to lower energy
-    double dIndContrib = 0.5 * dIndEnergy * (_electric / _dielectric);
-    pmeDirectEnergy += dIndContrib;
-
-    // NOTE: In the variational formulation, I-I energy is NOT explicitly included.
-    // It cancels with the polarization cost term. Only P-I energy (with 0.5 factor) is included.
+    // P-I energy with 0.5 factor (I-I cancels with polarization cost)
+    pmeDirectEnergy += -0.5 * qIndEnergy * (_electric / _dielectric);
+    pmeDirectEnergy += 0.5 * dIndEnergy * (_electric / _dielectric);
 
     // Force calculation: erfc-damped force terms (permanent multipoles)
     // Charge-charge
@@ -1279,49 +1250,41 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     force += bn2 * r * (muJr * muI_perp + muIr * muJ_perp);
 
     // Induced dipole force contributions
-    // Perm-ind uses same exclusion correction pattern as perm-perm
-    // Ind-ind uses iScale
     Vec3 indForceTotal(0.0, 0.0, 0.0);
-    Vec3 fullIndForce(0.0, 0.0, 0.0);  // Full Coulomb perm-ind for exclusion correction
+    Vec3 fullIndForce(0.0, 0.0, 0.0);
     {
         double uIr_bn = uI.dot(rhat);
         double uJr_bn = uJ.dot(rhat);
         Vec3 uI_perp = uI - uIr_bn * rhat;
         Vec3 uJ_perp = uJ - uJr_bn * rhat;
 
-        // Charge-induced dipole force (erfc-damped) - NOT scaled by mScale
+        // Charge-induced dipole force (erfc-damped)
         Vec3 cIndForce(0.0, 0.0, 0.0);
         cIndForce += -(particleI.charge * uJr_bn - particleJ.charge * uIr_bn) * (r * bn2 - bn1 / r) * deltaR;
         cIndForce += -bn1 * (particleJ.charge * uI_perp - particleI.charge * uJ_perp);
         indForceTotal += cIndForce;
 
-        // Full Coulomb charge-induced force for exclusion correction
-        // F = q * (3(u·rhat)rhat - u) / r³
+        // Full Coulomb charge-induced for exclusion correction
         fullIndForce += (particleJ.charge * (3.0 * uIr_bn * rhat - uI) -
                          particleI.charge * (3.0 * uJr_bn * rhat - uJ)) * rInv3;
 
-        // Permanent dipole - induced dipole force (erfc-damped) - NOT scaled by mScale
+        // Permanent dipole - induced dipole force (erfc-damped)
         Vec3 dIndForce(0.0, 0.0, 0.0);
         dIndForce += (bn2 * (uIdJ + uJdI) + (2.0 * bn2 - r * r * bn3) * (muIr * uJr_bn + muJr * uIr_bn)) * deltaR;
         dIndForce += bn2 * r * (muIr * uJ_perp + uJr_bn * muI_perp + muJr * uI_perp + uIr_bn * muJ_perp);
         indForceTotal += dIndForce;
 
-        // Full Coulomb dipole-induced force for exclusion correction
-        // Same tensor form as dipole-dipole: F = 3*(d·rhat*u + u·rhat*d + (d·u)rhat - 5*(d·rhat)(u·rhat)rhat)/r⁴
+        // Full Coulomb dipole-induced for exclusion correction
         fullIndForce += rInv4 * (3.0 * (muIr * uJ + uJr_bn * particleI.dipole + muJr * uI + uIr_bn * particleJ.dipole
                                        + (uIdJ + uJdI) * rhat)
                                 - 15.0 * (muIr * uJr_bn + muJr * uIr_bn) * rhat);
 
-        // Induced-induced dipole force (only for Mutual, scaled by iScale)
-        // Tensor force with thole3/thole5, plus damping derivative
+        // Induced-induced dipole force (Mutual only, scaled by iScale)
         Vec3 indIndForce(0.0, 0.0, 0.0);
         if (_polarizationType == Mutual && particleI.polarizability > 0 && particleJ.polarizability > 0) {
-            // Tensor force - note bn3 term must also be scaled by thole5
             indIndForce += (thole3 * bn2 * uIuJ + thole5 * (2.0 * bn2 - r * r * bn3) * uIr_bn * uJr_bn) * deltaR;
             indIndForce += thole5 * bn2 * r * (uJr_bn * uI_perp + uIr_bn * uJ_perp);
-            // Damping derivative (chain rule from d(thole)/dr)
-            // Use rInv3 (not bn1) because Thole damping multiplies the FULL Coulomb
-            // interaction, not just the erfc (direct space) part
+            // Damping derivative (Thole damps full Coulomb, not just erfc)
             indIndForce += -rInv3 * (thole3_dr * uIuJ - 3.0 * thole5_dr * uIr_bn * uJr_bn) * rhat;
             indForceTotal += iScale * indIndForce;
         }
@@ -1357,17 +1320,14 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     Vec3 fieldAtI = fieldAtI_erfc - (1.0 - mScale) * fieldAtI_full;
     Vec3 fieldAtJ = fieldAtJ_erfc - (1.0 - mScale) * fieldAtJ_full;
 
-    // Calculate induced dipole field contribution to permanent dipole torque
-    // The induced dipole field at I from induced dipole J: E = (3(u·rhat)rhat - u) / r³
-    // For erfc-damped: use bn1 for 1/r³ and bn2 for 3/r⁵
+    // Induced field for permanent dipole torque
     double uJr_bn = uJ.dot(rhat);
     double uIr_bn = uI.dot(rhat);
     Vec3 indFieldAtI_erfc = (bn2 * r2 * uJr_bn * rhat - bn1 * uJ);
     Vec3 indFieldAtJ_erfc = (bn2 * r2 * uIr_bn * rhat - bn1 * uI);
     Vec3 indFieldAtI_full = (3.0 * uJr_bn * rhat - uJ) * rInv3;
     Vec3 indFieldAtJ_full = (3.0 * uIr_bn * rhat - uI) * rInv3;
-    // For excluded pairs (mScale=0): only reciprocal correction (erf), no Thole damping
-    // For non-excluded pairs (mScale=1): Thole-damped erfc
+    // Excluded: erf correction only; non-excluded: Thole-damped erfc
     Vec3 indFieldAtI = mScale * thole_d0_pi * indFieldAtI_erfc - (1.0 - mScale) * (indFieldAtI_full - indFieldAtI_erfc);
     Vec3 indFieldAtJ = mScale * thole_d0_pi * indFieldAtJ_erfc - (1.0 - mScale) * (indFieldAtJ_full - indFieldAtJ_erfc);
 
