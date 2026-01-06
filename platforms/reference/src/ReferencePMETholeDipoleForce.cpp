@@ -893,9 +893,11 @@ double ReferencePMETholeDipoleForce::computeReciprocalSpaceInducedDipoleForceAnd
 
         // Torque on permanent dipoles from induced potential
         const double* phi = &cphid[10*i];
-        torques[i][0] += 0.5*_electric*(particleData[i].dipole[2]*phi[2] - particleData[i].dipole[1]*phi[3]);
-        torques[i][1] += 0.5*_electric*(particleData[i].dipole[0]*phi[3] - particleData[i].dipole[2]*phi[1]);
-        torques[i][2] += 0.5*_electric*(particleData[i].dipole[1]*phi[1] - particleData[i].dipole[0]*phi[2]);
+        // Use 1.0 instead of 0.5 because TholeDipole spreads only μ on grid (1×)
+        // while AMOEBA spreads d+p=2μ (2×), so AMOEBA's 0.5×(2μ×E) = our 1.0×(μ×E)
+        torques[i][0] += 1.0*_electric*(particleData[i].dipole[2]*phi[2] - particleData[i].dipole[1]*phi[3]);
+        torques[i][1] += 1.0*_electric*(particleData[i].dipole[0]*phi[3] - particleData[i].dipole[2]*phi[1]);
+        torques[i][2] += 1.0*_electric*(particleData[i].dipole[1]*phi[1] - particleData[i].dipole[0]*phi[2]);
 
         double multipole[4];
         multipole[0] = particleData[i].charge;
@@ -1343,7 +1345,7 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     // Add perm-ind full Coulomb for exclusion correction
     fullForce += fullIndForce;
 
-    // erfc-damped field for torques (permanent multipoles only - induced dipoles are isotropic)
+    // erfc-damped field for torques (permanent multipoles only)
     Vec3 fieldAtI_erfc = -particleJ.charge * bn1 * r * rhat + (bn2 * r2 * muJr * rhat - bn1 * particleJ.dipole);
     Vec3 fieldAtJ_erfc = particleI.charge * bn1 * r * rhat + (bn2 * r2 * muIr * rhat - bn1 * particleI.dipole);
 
@@ -1355,16 +1357,35 @@ double ReferencePMETholeDipoleForce::calculatePmeDirectElectrostaticPairIxn(
     Vec3 fieldAtI = fieldAtI_erfc - (1.0 - mScale) * fieldAtI_full;
     Vec3 fieldAtJ = fieldAtJ_erfc - (1.0 - mScale) * fieldAtJ_full;
 
+    // Calculate induced dipole field contribution to permanent dipole torque
+    // The induced dipole field at I from induced dipole J: E = (3(u·rhat)rhat - u) / r³
+    // For erfc-damped: use bn1 for 1/r³ and bn2 for 3/r⁵
+    double uJr_bn = uJ.dot(rhat);
+    double uIr_bn = uI.dot(rhat);
+    Vec3 indFieldAtI_erfc = (bn2 * r2 * uJr_bn * rhat - bn1 * uJ);
+    Vec3 indFieldAtJ_erfc = (bn2 * r2 * uIr_bn * rhat - bn1 * uI);
+    Vec3 indFieldAtI_full = (3.0 * uJr_bn * rhat - uJ) * rInv3;
+    Vec3 indFieldAtJ_full = (3.0 * uIr_bn * rhat - uI) * rInv3;
+    // For excluded pairs (mScale=0): only reciprocal correction (erf), no Thole damping
+    // For non-excluded pairs (mScale=1): Thole-damped erfc
+    Vec3 indFieldAtI = mScale * thole_d0_pi * indFieldAtI_erfc - (1.0 - mScale) * (indFieldAtI_full - indFieldAtI_erfc);
+    Vec3 indFieldAtJ = mScale * thole_d0_pi * indFieldAtJ_erfc - (1.0 - mScale) * (indFieldAtJ_full - indFieldAtJ_erfc);
+
     Vec3 forceTotal = (force - (1.0 - mScale) * fullForce) * (_electric / _dielectric);
 
     forces[iIndex] -= forceTotal;
     forces[jIndex] += forceTotal;
 
+    // Permanent dipole torque from permanent field
     Vec3 torqueI = particleI.dipole.cross(fieldAtI) * (_electric / _dielectric);
     Vec3 torqueJ = particleJ.dipole.cross(fieldAtJ) * (_electric / _dielectric);
 
-    torques[iIndex] += torqueI;
-    torques[jIndex] += torqueJ;
+    // Add induced field contribution to permanent dipole torque (matching AMOEBA's Vij)
+    Vec3 indTorqueI = particleI.dipole.cross(indFieldAtI) * (_electric / _dielectric);
+    Vec3 indTorqueJ = particleJ.dipole.cross(indFieldAtJ) * (_electric / _dielectric);
+
+    torques[iIndex] += torqueI + indTorqueI;
+    torques[jIndex] += torqueJ + indTorqueJ;
 
     return pmeDirectEnergy;
 }
