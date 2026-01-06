@@ -111,6 +111,7 @@ void testZBisect() {
     TholeDipoleForce* force = new TholeDipoleForce();
     system.addForce(force);
     force->setNonbondedMethod(TholeDipoleForce::NoCutoff);
+    force->setPolarizationType(TholeDipoleForce::Direct);
 
     double charge[] = {-1.01875, 0, 0, 0, -0.51966, 0.25983, 0.25983};
     double dipole[7][3] = {
