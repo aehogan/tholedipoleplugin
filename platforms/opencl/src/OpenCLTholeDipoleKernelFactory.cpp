@@ -32,7 +32,7 @@
 #include <exception>
 
 #include "OpenCLTholeDipoleKernelFactory.h"
-#include "CommonTholeDipoleKernels.h"
+#include "OpenCLTholeDipoleKernels.h"
 #include "openmm/opencl/OpenCLContext.h"
 #include "openmm/internal/windowsExport.h"
 #include "openmm/internal/ContextImpl.h"
@@ -68,6 +68,6 @@ extern "C" OPENMM_EXPORT void registerTholeDipoleOpenCLKernelFactories() {
 KernelImpl* OpenCLTholeDipoleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
     OpenCLContext& cl = *static_cast<OpenCLPlatform::PlatformData*>(context.getPlatformData())->contexts[0];
     if (name == CalcTholeDipoleForceKernel::Name())
-        return new CommonCalcTholeDipoleForceKernel(name, platform, cl, context.getSystem());
+        return new OpenCLCalcTholeDipoleForceKernel(name, platform, cl, context.getSystem());
     throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '")+name+"'").c_str());
 }

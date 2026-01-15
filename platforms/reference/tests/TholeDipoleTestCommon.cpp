@@ -16,7 +16,7 @@ void setupTholeDipoleAmmonia(System& system, TholeDipoleForce* tholeDipoleForce,
     tholeDipoleForce->setNonbondedMethod(nonbondedMethod);
     tholeDipoleForce->setPolarizationType(polarizationType);
     tholeDipoleForce->setCutoffDistance(cutoff);
-    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-6);
+    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-9);
     tholeDipoleForce->setMutualInducedMaxIterations(500);
     tholeDipoleForce->setPMEParameters(1.4024714e+01, inputPmeGridDimension, inputPmeGridDimension, inputPmeGridDimension);
     tholeDipoleForce->setEwaldErrorTolerance(1.0e-4);
@@ -173,7 +173,7 @@ void setupAndGetForcesEnergyTholeDipoleWater(TholeDipoleForce::NonbondedMethod n
     tholeDipoleForce->setNonbondedMethod(nonbondedMethod);
     tholeDipoleForce->setPolarizationType(polarizationType);
     tholeDipoleForce->setCutoffDistance(cutoff);
-    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-6);
+    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-9);
     tholeDipoleForce->setMutualInducedMaxIterations(500);
     tholeDipoleForce->setPMEParameters(5.4459052e+00, inputPmeGridDimension, inputPmeGridDimension, inputPmeGridDimension);
     tholeDipoleForce->setEwaldErrorTolerance(1.0e-4);

@@ -795,6 +795,7 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByPCG(
 
     // Initial residual: r = α*(E_fixed + E_induced) - μ
     calculateInducedDipoleFields(particleData, _inducedDipole, inducedDipoleField);
+
     double r_dot_z = 0.0;
     for (int i = 0; i < n; ++i) {
         Vec3 b = particleData[i].polarizability * (_fixedDipoleField[i] + inducedDipoleField[i]);
@@ -807,6 +808,11 @@ void ReferenceTholeDipoleForce::convergeInducedDipolesByPCG(
 
     double epsilon = sqrt(r_dot_z / (3.0 * n));
     if (epsilon <= tol) {
+        // Update dipoles to target value before returning (matches CUDA DIIS behavior)
+        for (int i = 0; i < n; ++i) {
+            Vec3 b = particleData[i].polarizability * (_fixedDipoleField[i] + inducedDipoleField[i]);
+            _inducedDipole[i] = b;
+        }
         _mutualInducedDipoleConverged = 1;
         _mutualInducedDipoleIterations = 0;
         _mutualInducedDipoleEpsilon = epsilon;
@@ -1180,7 +1186,7 @@ void ReferenceTholeDipoleForce::setup(
     
     // Apply rotation matrices to transform dipoles from molecular to lab frame
     applyRotationMatrix(particleData, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs);
-    
+
     // Setup scaling factor maps
     setupScaleMaps(multipoleCovalentInfo);
     

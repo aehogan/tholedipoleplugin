@@ -48,7 +48,7 @@ void testTriclinic() {
     force->setNonbondedMethod(TholeDipoleForce::PME);
     force->setPolarizationType(TholeDipoleForce::Direct);
     force->setCutoffDistance(0.7);
-    force->setMutualInducedTargetEpsilon(1e-6);
+    force->setMutualInducedTargetEpsilon(1.0e-9);
     force->setPMEParameters(5.4459051633620055, 24, 24, 24);
     double o_charge = -0.42616, h_charge = 0.21308;
     vector<double> o_dipole(3), h_dipole(3);
@@ -133,7 +133,7 @@ void testTriclinic() {
     amoebaForce->setNonbondedMethod(AmoebaMultipoleForce::PME);
     amoebaForce->setPolarizationType(AmoebaMultipoleForce::Mutual);
     amoebaForce->setCutoffDistance(0.7);
-    amoebaForce->setMutualInducedTargetEpsilon(1e-6);
+    amoebaForce->setMutualInducedTargetEpsilon(1.0e-9);
     amoebaForce->setPMEParameters(5.4459051633620055, 24, 24, 24);
     amoebaSystem.addForce(amoebaForce);
 

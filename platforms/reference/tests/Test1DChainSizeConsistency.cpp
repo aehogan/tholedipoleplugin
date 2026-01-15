@@ -129,7 +129,7 @@ void test1DChainSizeConsistency() {
                 force->setPolarizationType(TholeDipoleForce::Direct); // induced = 0
             } else {
                 force->setPolarizationType(TholeDipoleForce::Mutual);
-                force->setMutualInducedTargetEpsilon(1.0e-5);
+                force->setMutualInducedTargetEpsilon(1.0e-9);
                 force->setMutualInducedMaxIterations(500);
             }
 

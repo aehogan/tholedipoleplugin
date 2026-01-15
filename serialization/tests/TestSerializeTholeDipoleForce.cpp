@@ -54,7 +54,7 @@ void testSerialization() {
     force.setCutoffDistance(0.9);
     force.setEwaldErrorTolerance(1.0e-05);
     force.setMutualInducedMaxIterations(200);
-    force.setMutualInducedTargetEpsilon(1.0e-05);
+    force.setMutualInducedTargetEpsilon(1.0e-9);
     force.setPMEParameters(0.5, 32, 32, 32);
 
     vector<double> extrapolationCoefficients;

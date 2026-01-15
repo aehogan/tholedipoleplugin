@@ -34,6 +34,7 @@
 #include "openmm/reference/ReferencePlatform.h"
 #include "openmm/internal/ContextImpl.h"
 #include "openmm/OpenMMException.h"
+#include <iostream>
 
 using namespace TholeDipolePlugin;
 using namespace OpenMM;
@@ -41,18 +42,19 @@ using namespace OpenMM;
 extern "C" OPENMM_EXPORT void registerPlatforms() {
 }
 
-extern "C" OPENMM_EXPORT void registerKernelFactories() {
-    for (int i = 0; i < Platform::getNumPlatforms(); i++) {
-        Platform& platform = Platform::getPlatform(i);
-        if (dynamic_cast<ReferencePlatform*>(&platform) != NULL) {
-            ReferenceTholeDipoleKernelFactory* factory = new ReferenceTholeDipoleKernelFactory();
-            platform.registerKernelFactory(CalcTholeDipoleForceKernel::Name(), factory);
-        }
+extern "C" OPENMM_EXPORT void registerTholeDipoleReferenceKernelFactories() {
+    try {
+        Platform& platform = Platform::getPlatformByName("Reference");
+        ReferenceTholeDipoleKernelFactory* factory = new ReferenceTholeDipoleKernelFactory();
+        platform.registerKernelFactory(CalcTholeDipoleForceKernel::Name(), factory);
+    }
+    catch (...) {
+        // Ignore if Reference platform not available
     }
 }
 
-extern "C" OPENMM_EXPORT void registerTholeDipoleReferenceKernelFactories() {
-    registerKernelFactories();
+extern "C" OPENMM_EXPORT void registerKernelFactories() {
+    registerTholeDipoleReferenceKernelFactories();
 }
 
 KernelImpl* ReferenceTholeDipoleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {

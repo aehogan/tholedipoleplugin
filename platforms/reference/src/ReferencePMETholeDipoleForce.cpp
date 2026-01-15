@@ -269,6 +269,7 @@ double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDi
     }
 
     double recipEnergy = computeReciprocalSpaceFixedMultipoleForceAndEnergy(particleData, forces, torques);
+
     double selfEnergy = calculatePmeSelfEnergy(particleData);
     calculatePmeSelfTorque(particleData, torques);
 
@@ -283,7 +284,6 @@ double ReferencePMETholeDipoleForce::calculateElectrostatic(const vector<TholeDi
     double inducedRecipEnergy = computeReciprocalSpaceInducedDipoleForceAndEnergy(particleData, forces, torques);
 
     energy = directEnergy + recipEnergy + inducedRecipEnergy + selfEnergy;
-
     return energy;
 }
 
@@ -338,12 +338,14 @@ void ReferencePMETholeDipoleForce::calculateInducedDipoleFields(const vector<Tho
                                                    inducedDipoles, iScale, inducedDipoleField);
         }
     }
+
     initializePmeGrid();
     spreadInducedDipolesOnGrid(inducedDipoles);
     performFFT(true);
     _inducedDipoleRecipEnergy = performPmeReciprocalConvolution();
     performFFT(false);
     computeInducedPotentialFromGrid();
+
     recordInducedDipoleField(inducedDipoleField);
 
     double term = (4.0/3.0)*(_alphaEwald*_alphaEwald*_alphaEwald)/SQRT_PI;
@@ -667,8 +669,7 @@ double ReferencePMETholeDipoleForce::performPmeReciprocalConvolution()
         }
     }
 
-    double result = 0.5 * esum;
-    return result;
+    return 0.5 * esum;
 }
 
 void ReferencePMETholeDipoleForce::computeFixedPotentialFromGrid()

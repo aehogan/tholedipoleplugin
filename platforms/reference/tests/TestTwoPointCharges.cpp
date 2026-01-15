@@ -173,7 +173,7 @@ static double runTest(TholeDipoleForce::TholeDampingType dampingType,
     }
 
     if (polType == TholeDipoleForce::Mutual) {
-        force->setMutualInducedTargetEpsilon(1.0e-8);
+        force->setMutualInducedTargetEpsilon(1.0e-9);
         force->setMutualInducedMaxIterations(500);
     }
 

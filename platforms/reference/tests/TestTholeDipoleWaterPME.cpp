@@ -43,7 +43,7 @@ static void testWaterPMEWithPolarization(TholeDipoleForce::PolarizationType polT
     tholeDipoleForce->setNonbondedMethod(TholeDipoleForce::PME);
     tholeDipoleForce->setPolarizationType(polType);
     tholeDipoleForce->setCutoffDistance(cutoff);
-    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-6);
+    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-9);
     tholeDipoleForce->setMutualInducedMaxIterations(500);
     tholeDipoleForce->setPMEParameters(5.4459052e+00, inputPmeGridDimension, inputPmeGridDimension, inputPmeGridDimension);
     tholeDipoleForce->setEwaldErrorTolerance(1.0e-4);
@@ -138,7 +138,7 @@ static void testWaterPMENoPolarization() {
     tholeDipoleForce->setNonbondedMethod(TholeDipoleForce::PME);
     tholeDipoleForce->setPolarizationType(TholeDipoleForce::Direct);
     tholeDipoleForce->setCutoffDistance(cutoff);
-    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-6);
+    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-9);
     tholeDipoleForce->setMutualInducedMaxIterations(500);
     tholeDipoleForce->setPMEParameters(5.4459052e+00, inputPmeGridDimension, inputPmeGridDimension, inputPmeGridDimension);
     tholeDipoleForce->setEwaldErrorTolerance(1.0e-4);

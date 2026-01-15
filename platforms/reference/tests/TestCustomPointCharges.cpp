@@ -26,7 +26,7 @@ void testPythonPMEDipoles() {
     tholeDipoleForce->setNonbondedMethod(TholeDipoleForce::PME);
     tholeDipoleForce->setPolarizationType(TholeDipoleForce::Direct);
     tholeDipoleForce->setCutoffDistance(cutoff);
-    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-6);
+    tholeDipoleForce->setMutualInducedTargetEpsilon(1.0e-9);
     tholeDipoleForce->setMutualInducedMaxIterations(500);
 
     // Set PME Parameters (Alpha, Grid, Grid, Grid)
