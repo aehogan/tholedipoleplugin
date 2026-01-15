@@ -32,7 +32,7 @@
 #include <exception>
 
 #include "CudaTholeDipoleKernelFactory.h"
-#include "CommonTholeDipoleKernels.h"
+#include "CudaTholeDipoleKernels.h"
 #include "openmm/cuda/CudaContext.h"
 #include "openmm/internal/windowsExport.h"
 #include "openmm/internal/ContextImpl.h"
@@ -44,17 +44,6 @@ using namespace OpenMM;
 extern "C" OPENMM_EXPORT void registerPlatforms() {
 }
 
-extern "C" OPENMM_EXPORT void registerKernelFactories() {
-    try {
-        Platform& platform = Platform::getPlatformByName("CUDA");
-        CudaTholeDipoleKernelFactory* factory = new CudaTholeDipoleKernelFactory();
-        platform.registerKernelFactory(CalcTholeDipoleForceKernel::Name(), factory);
-    }
-    catch (std::exception ex) {
-        // Ignore
-    }
-}
-
 extern "C" OPENMM_EXPORT void registerTholeDipoleCudaKernelFactories() {
     try {
         Platform::getPlatformByName("CUDA");
@@ -62,12 +51,23 @@ extern "C" OPENMM_EXPORT void registerTholeDipoleCudaKernelFactories() {
     catch (...) {
         Platform::registerPlatform(new CudaPlatform());
     }
-    registerKernelFactories();
+    try {
+        Platform& platform = Platform::getPlatformByName("CUDA");
+        CudaTholeDipoleKernelFactory* factory = new CudaTholeDipoleKernelFactory();
+        platform.registerKernelFactory(CalcTholeDipoleForceKernel::Name(), factory);
+    }
+    catch (...) {
+        // Ignore
+    }
+}
+
+extern "C" OPENMM_EXPORT void registerKernelFactories() {
+    registerTholeDipoleCudaKernelFactories();
 }
 
 KernelImpl* CudaTholeDipoleKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
     CudaContext& cu = *static_cast<CudaPlatform::PlatformData*>(context.getPlatformData())->contexts[0];
     if (name == CalcTholeDipoleForceKernel::Name())
-        return new CommonCalcTholeDipoleForceKernel(name, platform, cu, context.getSystem());
+        return new CudaCalcTholeDipoleForceKernel(name, platform, cu, context.getSystem());
     throw OpenMMException((std::string("Tried to create kernel with illegal kernel name '")+name+"'").c_str());
 }

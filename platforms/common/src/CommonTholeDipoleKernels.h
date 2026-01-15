@@ -2,7 +2,7 @@
 #define COMMON_THOLEDIPOLE_KERNELS_H_
 
 /* -------------------------------------------------------------------------- *
- *                                   OpenMM                                   *
+ *                              OpenMMTholeDipole                             *
  * -------------------------------------------------------------------------- *
  * This is part of the OpenMM molecular simulation toolkit originating from   *
  * Simbios, the NIH National Center for Physics-Based Simulation of           *
@@ -38,43 +38,126 @@
 
 namespace TholeDipolePlugin {
 
-/**
- * This kernel is invoked by TholeDipoleForce to calculate the forces acting on the system and the energy of the system.
- */
 class CommonCalcTholeDipoleForceKernel : public CalcTholeDipoleForceKernel {
 public:
     CommonCalcTholeDipoleForceKernel(std::string name, const OpenMM::Platform& platform, OpenMM::ComputeContext& cc, const OpenMM::System& system) :
-            CalcTholeDipoleForceKernel(name, platform), hasInitializedKernel(false), cc(cc), system(system) {
+            CalcTholeDipoleForceKernel(name, platform), cc(cc), system(system), hasInitializedKernels(false), multipolesAreValid(false) {
     }
-    /**
-     * Initialize the kernel.
-     * 
-     * @param system     the System this kernel will be applied to
-     * @param force      the TholeDipoleForce this kernel will be used for
-     */
+    ~CommonCalcTholeDipoleForceKernel();
     void initialize(const OpenMM::System& system, const TholeDipoleForce& force);
-    /**
-     * Execute the kernel to calculate the forces and/or energy.
-     *
-     * @param context        the context in which to execute this kernel
-     * @param includeForces  true if forces should be calculated
-     * @param includeEnergy  true if the energy should be calculated
-     * @return the potential energy due to the force
-     */
     double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
-    /**
-     * Copy changed parameters over to a context.
-     *
-     * @param context    the context to copy parameters to
-     * @param force      the TholeDipoleForce to copy the parameters from
-     */
     void copyParametersToContext(OpenMM::ContextImpl& context, const TholeDipoleForce& force);
-private:
-    int numBonds;
-    bool hasInitializedKernel;
+    void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
+    void getInducedDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles);
+    void getLabFramePermanentDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles);
+    void getTotalDipoles(OpenMM::ContextImpl& context, std::vector<OpenMM::Vec3>& dipoles);
+    void getElectrostaticPotential(OpenMM::ContextImpl& context, const std::vector<OpenMM::Vec3>& inputGrid,
+                                   std::vector<double>& outputElectrostaticPotential);
+    void getSystemMultipoleMoments(OpenMM::ContextImpl& context, std::vector<double>& outputMultipoleMoments);
+
+protected:
+    class ForceInfo;
+    void initializeScaleFactors();
+    void initializeBSplineModuli();
+    void computeInducedFieldDirect();
+    bool iterateDipolesByDIIS(int iteration);
+    void ensureMultipolesValid(OpenMM::ContextImpl& context);
+    void setPeriodicBoxArgs(OpenMM::ContextImpl& context, OpenMM::ComputeKernel kernel, int index);
+    void computeReciprocalBoxVectors(OpenMM::ContextImpl& context);
+    double computePmeReciprocalField(OpenMM::ContextImpl& context, bool isFixedField);
+    double computePmeSelfEnergy();
+    double computePmeInducedRecipEnergy();
+    virtual void computeFFT(bool forward) = 0;
+    virtual bool useFixedPointChargeSpreading() const = 0;
+    template <class T, class T4> void computeSystemMultipoleMomentsImpl(OpenMM::ContextImpl& context, std::vector<double>& outputMultipoleMoments);
+
+    int numParticles, maxInducedIterations;
+    int gridSizeX, gridSizeY, gridSizeZ;
+    int diisBlockSize;  // Block size for DIIS kernel execution
+    double pmeAlpha, inducedEpsilon;
+    bool usePME, hasInitializedKernels, hasInitializedScaleFactors, multipolesAreValid;
+    TholeDipoleForce::PolarizationType polarizationType;
+    TholeDipoleForce::TholeDampingType dampingType;
+    double tholeDampingParameter;
+    double cutoffDistance;
+
     OpenMM::ComputeContext& cc;
     const OpenMM::System& system;
-    OpenMM::ComputeArray params;
+
+    std::vector<OpenMM::mm_int4> covalentFlagValues;
+    std::vector<float> originalScaleFactors;  // Scale factors in original atom order
+
+    OpenMM::ComputeArray multipoleParticles;
+    OpenMM::ComputeArray localDipoles;
+    OpenMM::ComputeArray labDipoles;
+    OpenMM::ComputeArray inverseAtomIndex;  // Maps original index to GPU index
+    OpenMM::ComputeArray polarizability;
+    OpenMM::ComputeArray dampingAndThole;
+    OpenMM::ComputeArray field;
+    OpenMM::ComputeArray inducedField;
+    OpenMM::ComputeArray inducedDipole;
+    OpenMM::ComputeArray torque;
+    OpenMM::ComputeArray covalentFlags;
+    OpenMM::ComputeArray pairScaleFactors;  // mScale for each pair (i,j), indexed as i*paddedNumAtoms+j
+    OpenMM::ComputeArray lastPositions;
+
+    // Mutual polarization DIIS arrays
+    OpenMM::ComputeArray inducedDipoleErrors;
+    OpenMM::ComputeArray prevDipoles;
+    OpenMM::ComputeArray prevErrors;
+    OpenMM::ComputeArray diisMatrix;
+    OpenMM::ComputeArray diisCoefficients;
+
+    // PME arrays
+    OpenMM::ComputeArray sphericalDipoles;
+    OpenMM::ComputeArray fracDipoles;
+    OpenMM::ComputeArray pmeGrid1;
+    OpenMM::ComputeArray pmeGrid2;
+    OpenMM::ComputeArray pmeGridLong;
+    OpenMM::ComputeArray pmeBsplineModuliX;
+    OpenMM::ComputeArray pmeBsplineModuliY;
+    OpenMM::ComputeArray pmeBsplineModuliZ;
+    OpenMM::ComputeArray pmePhi;
+    OpenMM::ComputeArray pmePhid;
+    OpenMM::ComputeArray pmeCphi;
+    OpenMM::ComputeArray pmeEnergyBuffer;
+
+    OpenMM::ComputeKernel computeMomentsKernel;
+    OpenMM::ComputeKernel computeFixedFieldKernel;
+    OpenMM::ComputeKernel computeInducedFieldKernel;
+    OpenMM::ComputeKernel recordInducedDipolesKernel;
+    OpenMM::ComputeKernel updateInducedFieldKernel;
+    OpenMM::ComputeKernel electrostaticsKernel;
+    OpenMM::ComputeKernel mapTorqueKernel;
+    OpenMM::ComputeKernel computePotentialKernel;
+
+    // DIIS kernels
+    OpenMM::ComputeKernel recordDIISDipolesKernel;
+    OpenMM::ComputeKernel buildMatrixKernel;
+    OpenMM::ComputeKernel solveMatrixKernel;
+
+    // PME kernels
+    OpenMM::ComputeKernel pmeSpreadFixedMultipolesKernel;
+    OpenMM::ComputeKernel pmeSpreadInducedDipolesKernel;
+    OpenMM::ComputeKernel pmeFinishSpreadChargeKernel;
+    OpenMM::ComputeKernel pmeConvolutionKernel;
+    OpenMM::ComputeKernel pmeFixedPotentialKernel;
+    OpenMM::ComputeKernel pmeInducedPotentialKernel;
+    OpenMM::ComputeKernel pmeFixedForceKernel;
+    OpenMM::ComputeKernel pmeInducedForceKernel;
+    OpenMM::ComputeKernel pmeRecordInducedFieldDipolesKernel;
+    OpenMM::ComputeKernel pmeTransformMultipolesKernel;
+    OpenMM::ComputeKernel pmeTransformPotentialKernel;
+    OpenMM::ComputeKernel pmeRecipForceKernel;
+
+    // Cached box vectors for PME
+    OpenMM::mm_double4 recipBoxVecXD, recipBoxVecYD, recipBoxVecZD;
+    OpenMM::mm_double4 periodicBoxVecXD, periodicBoxVecYD, periodicBoxVecZD, periodicBoxSizeD;
+    OpenMM::mm_float4 recipBoxVecXF, recipBoxVecYF, recipBoxVecZF;
+    OpenMM::mm_float4 periodicBoxVecXF, periodicBoxVecYF, periodicBoxVecZF, periodicBoxSizeF;
+
+    static constexpr int PmeOrder = 5;
+    static constexpr int MaxPrevDIISDipoles = 20;
 };
 
 } // namespace TholeDipolePlugin
